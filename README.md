@@ -1,12 +1,12 @@
 # MorphoGenerator Tool (v1.0)
 
-**MorphoGenerator Tool** is an advanced scientific desktop application for the parametric analysis, morphological design, CFD streamline visualization, and 3D exploration of **MorphoGenerator** microfluidic swirling devices.
+**MorphoGenerator Tool** is an scientific desktop application for the parametric analysis, morphological design, CFD streamline visualization, and 3D exploration of **MorphoGenerator** device.
 
 ---
 
 ## Key Features
 
-### 1. 3D Model Explorer (Morphogenerator)
+### 1. 3D Model Explorer
 - Interactive **3D GLB Viewer** for inspecting internal geometry and flow channels.
 - Real-time **clipping planes** (X, Y, Z axes) with adjustable offset, rotation, and lighting.
 - Quick preset views (Top, Isometric, Front, Side).
@@ -18,23 +18,14 @@
   - Dynamic side inlet configuration: select number of peripheral inlets (0 to 10), angular width (theta), angular rotation (0 to 360 deg), and spacing distribution.
   - **Synchronized Dual-Plane Visualization**:
     - **Top View Morphogenerator**: Inlet plane boundaries, blades (solid blue for down blades, dotted orange for upper blades), and peripheral inlet holes.
-    - **Nozzle Plane**: Outlet plane streamline distribution, core fluid trace, and nozzle diameter boundary (R = 1.0 mm).
-    - Responsive canvas auto-scaling with interactive draggable panel splitter.
-- **Inverse Design & Parametric Sweep**:
+    - **Nozzle Plane**: Outlet plane streamline distribution, core fluid trace, and nozzle diameter boundary.
+- **Parametric Sweep**:
   - Specify target DSI or perimeter metrics to analytically solve for matching (Q, N) pairs.
   - Instant side-by-side preview of predicted streamline topologies.
 
 ### 3. Correlation Plots
 - High-resolution comparative plots of morphological polynomials.
 - Interactive series selection, customizable styling, and direct image/vector export.
-
-### 4. Settings & Accessibility
-- **UI Scaling**: Custom number list scaling from 1.0x up to 3.0x (step 0.5x).
-- **Internationalization (i18n)**: English and Italian language support.
-- **Vibrant Navigation**: Full-color emoji iconography for clean, modern aesthetics.
-
-### 5. Interactive User Guide
-- Embedded documentation covering governing physical principles, DSI definitions, and operational tutorials.
 
 ---
 
@@ -63,7 +54,7 @@ python main.py
 
 ## Building the Standalone Executable (.exe)
 
-To generate a standalone, single-file Windows executable with embedded assets and custom icon:
+To generate a standalone, single-file Windows executable with embedded assets and custom icon or you find it in releases:
 
 1. Run the build script:
    `cmd
@@ -78,7 +69,7 @@ To generate a standalone, single-file Windows executable with embedded assets an
 
 ## Project Architecture
 
-`
+```
 Morpho_tool/
 |-- app/
 |   |-- core/                  # Analytical solvers & data models
