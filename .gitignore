@@ -29,3 +29,8 @@ desktop.ini
 
 # App settings
 app_settings.json
+
+# Documents / Presentations
+*.pptx
+*.ppt
+
