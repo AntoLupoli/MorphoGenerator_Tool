@@ -443,34 +443,15 @@ class ParametersView(customtkinter.CTkFrame):
         self._img_resize_timer = self.after(40, self._rescale_and_display_dual_image)
 
     def _build_side_inlet_panel(self, parent):
-        """Build the configuration panel for multi-sector side inlets (without title banner)."""
-        # Controls grid (header title eliminated per user request)
+        """Build the configuration panel for multi-sector side inlets."""
         grid_frame = customtkinter.CTkFrame(parent, fg_color="transparent")
         grid_frame.pack(fill="x", padx=PAD_LG, pady=(PAD_MD, PAD_MD))
 
-        # Row 0: Theta Width, Rotation, Auto-rotate
-        # Theta Width
+        # θ Rotation (0 to 360 with step 1)
         customtkinter.CTkLabel(
-            grid_frame, text="θ Width (°)", font=FONTS["body"],
+            grid_frame, text="θ Rotation (°)", font=FONTS["body"],
             text_color=COLORS["text_primary"],
         ).grid(row=0, column=0, padx=(0, PAD_SM), pady=(PAD_SM, PAD_SM), sticky="w")
-
-        self._side_theta_entry = customtkinter.CTkEntry(
-            grid_frame, width=125, font=FONTS["mono"],
-            fg_color=COLORS["bg_tertiary"],
-            border_color=COLORS["border"],
-            text_color=COLORS["text_primary"],
-            placeholder_text="90",
-        )
-        self._side_theta_entry.insert(0, "90")
-        self._side_theta_entry.grid(row=0, column=1, padx=(0, PAD_LG), pady=(PAD_SM, PAD_SM))
-        self._side_theta_entry.bind("<KeyRelease>", self._on_side_param_changed)
-
-        # Rotation (0 to 360 with step 1)
-        customtkinter.CTkLabel(
-            grid_frame, text="Rotation (°)", font=FONTS["body"],
-            text_color=COLORS["text_primary"],
-        ).grid(row=0, column=2, padx=(0, PAD_SM), pady=(PAD_SM, PAD_SM), sticky="w")
 
         self._side_rot_entry = customtkinter.CTkEntry(
             grid_frame, width=54, font=FONTS["mono"],
@@ -480,11 +461,11 @@ class ParametersView(customtkinter.CTkFrame):
             placeholder_text="0",
         )
         self._side_rot_entry.insert(0, "0")
-        self._side_rot_entry.grid(row=0, column=3, padx=(0, PAD_SM), pady=(PAD_SM, PAD_SM))
+        self._side_rot_entry.grid(row=0, column=1, padx=(0, PAD_SM), pady=(PAD_SM, PAD_SM))
         self._side_rot_entry.bind("<KeyRelease>", self._on_side_rot_entry)
 
         self._side_rot_slider = customtkinter.CTkSlider(
-            grid_frame, from_=0, to=360, number_of_steps=360, width=130,
+            grid_frame, from_=0, to=360, number_of_steps=360, width=160,
             button_color=COLORS["accent"],
             button_hover_color=COLORS["accent_hover"],
             progress_color=COLORS["accent"],
@@ -492,7 +473,7 @@ class ParametersView(customtkinter.CTkFrame):
             command=self._on_side_rot_slider,
         )
         self._side_rot_slider.set(0)
-        self._side_rot_slider.grid(row=0, column=4, padx=(0, PAD_SM), pady=(PAD_SM, PAD_SM))
+        self._side_rot_slider.grid(row=0, column=2, padx=(0, PAD_LG), pady=(PAD_SM, PAD_SM))
         self._side_rot_slider.bind("<ButtonRelease-1>", self._on_side_rot_slider_release)
 
         # Auto-rotation button (automatically rotates 0° to 360°)
@@ -507,43 +488,7 @@ class ParametersView(customtkinter.CTkFrame):
             height=32, width=100,
             command=self._toggle_autorotation,
         )
-        self._btn_autorot.grid(row=0, column=5, padx=(0, PAD_SM), pady=(PAD_SM, PAD_SM))
-
-        # Row 1: Spacing, Reset Defaults, Update View
-        # Spacing
-        customtkinter.CTkLabel(
-            grid_frame, text="Spacing", font=FONTS["body"],
-            text_color=COLORS["text_primary"],
-        ).grid(row=1, column=0, padx=(0, PAD_SM), pady=(0, PAD_SM), sticky="w")
-
-        self._side_spacing_var = customtkinter.StringVar(value="Equispaced")
-        customtkinter.CTkSegmentedButton(
-            grid_frame,
-            values=["Equispaced"],
-            variable=self._side_spacing_var,
-            command=self._on_spacing_segmented_changed,
-            font=FONTS["body"],
-            selected_color=COLORS["accent"],
-            selected_hover_color=COLORS["accent_hover"],
-            unselected_color=COLORS["bg_tertiary"],
-            unselected_hover_color=COLORS["bg_hover"],
-            text_color=COLORS["text_primary"],
-            corner_radius=CORNER_RADIUS,
-            height=32,
-        ).grid(row=1, column=1, columnspan=2, padx=(0, PAD_LG), pady=(0, PAD_SM), sticky="w")
-
-        # Row 2: Spacing hint label with detailed examples & input formats
-        self._spacing_hint_label = customtkinter.CTkLabel(
-            grid_frame,
-            text="",
-            font=FONTS["caption"],
-            text_color=COLORS["text_secondary"],
-            anchor="w",
-            justify="left",
-            wraplength=850,
-        )
-        self._spacing_hint_label.grid(row=2, column=0, columnspan=6, padx=(0, PAD_LG), pady=(0, 4), sticky="w")
-        self._sync_theta_entry_for_spacing("Equispaced")
+        self._btn_autorot.grid(row=0, column=3, padx=(0, PAD_SM), pady=(PAD_SM, PAD_SM))
 
     def _get_selected_inlet_count(self) -> int:
         try:
@@ -551,24 +496,6 @@ class ParametersView(customtkinter.CTkFrame):
             return max(0, min(10, val))
         except (ValueError, TypeError):
             return 1
-
-    def _sync_theta_entry_for_spacing(self, spacing_val: Optional[str] = None):
-        """Update theta entry state and hint for Equispaced spacing."""
-        n_sides = self._get_selected_inlet_count()
-        val = 360.0 / n_sides if n_sides > 0 else 360.0
-        val_str = f"{int(val)}" if val.is_integer() else f"{val:.1f}"
-        self._side_theta_entry.configure(state="normal")
-        self._side_theta_entry.delete(0, "end")
-        self._side_theta_entry.insert(0, val_str)
-        self._side_theta_entry.configure(state="disabled")
-
-        inlet_word = i18n.t("inlets_plural") if n_sides != 1 else i18n.t("inlets_singular")
-        hint_template = i18n.t("spacing_hint_equispaced")
-        try:
-            hint_text = hint_template.format(n_sides=n_sides, val_str=val_str, inlets=inlet_word)
-        except Exception:
-            hint_text = f"Equispaced: distributes {n_sides} {inlet_word} uniformly across 360° with fixed width = {val_str}°."
-        self._spacing_hint_label.configure(text=hint_text)
 
     def _on_side_inlet_box_changed(self, value: str):
         """Called when user chooses a number (0..10) from the top-bar box."""
@@ -579,7 +506,6 @@ class ParametersView(customtkinter.CTkFrame):
             val = 1
 
         self._side_n_var.set(str(val))
-        self._sync_theta_entry_for_spacing()
         self._update_display_mode()
 
     def _on_side_inlet_box_typed(self, event=None):
@@ -589,11 +515,6 @@ class ParametersView(customtkinter.CTkFrame):
             val = int(text)
             if 0 <= val <= 10:
                 self._on_side_inlet_box_changed(str(val))
-
-    def _on_spacing_segmented_changed(self, value: str):
-        """Update hint and entry for Spacing choice and trigger plot update."""
-        self._sync_theta_entry_for_spacing(value)
-        self._on_side_param_changed()
 
     def _update_display_mode(self, N: Optional[int] = None, Q: Optional[float] = None):
         """Route to dual visualization for all peripheral inlet counts (0..10).
@@ -642,10 +563,6 @@ class ParametersView(customtkinter.CTkFrame):
             self._stop_autorotation()
             # Hide side inlet config panel
             self._side_inlet_frame.pack_forget()
-
-            # Reset entry
-            self._side_theta_entry.delete(0, "end")
-            self._side_theta_entry.insert(0, "360" if count == 1 else "0")
 
             # Show metric cards frame (above legend)
             self._fwd_cards_frame.pack(fill="x", pady=(0, PAD_SM // 2), before=self._fwd_legend_container)
@@ -772,8 +689,6 @@ class ParametersView(customtkinter.CTkFrame):
         self._side_rot_entry.delete(0, "end")
         self._side_rot_entry.insert(0, "0")
         self._side_rot_slider.set(0)
-        self._side_spacing_var.set("Equispaced")
-        self._sync_theta_entry_for_spacing("Equispaced")
         self._update_display_mode()
 
     def _parse_side_inlet_params(self):
