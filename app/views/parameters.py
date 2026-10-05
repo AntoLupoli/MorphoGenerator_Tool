@@ -460,7 +460,7 @@ class ParametersView(customtkinter.CTkFrame):
             fg_color=COLORS["bg_tertiary"],
             border_color=COLORS["border"],
             text_color=COLORS["text_primary"],
-            placeholder_text="90 or 30, 45, 60",
+            placeholder_text="90",
         )
         self._side_theta_entry.insert(0, "90")
         self._side_theta_entry.grid(row=0, column=1, padx=(0, PAD_LG), pady=(PAD_SM, PAD_SM))
@@ -519,7 +519,7 @@ class ParametersView(customtkinter.CTkFrame):
         self._side_spacing_var = customtkinter.StringVar(value="Equispaced")
         customtkinter.CTkSegmentedButton(
             grid_frame,
-            values=["Equispaced", "Contiguous"],
+            values=["Equispaced"],
             variable=self._side_spacing_var,
             command=self._on_spacing_segmented_changed,
             font=FONTS["body"],
@@ -553,64 +553,22 @@ class ParametersView(customtkinter.CTkFrame):
             return 1
 
     def _sync_theta_entry_for_spacing(self, spacing_val: Optional[str] = None):
-        """Update theta entry state and contents depending on Equispaced vs Contiguous."""
-        if spacing_val is None:
-            spacing_val = self._side_spacing_var.get()
+        """Update theta entry state and hint for Equispaced spacing."""
         n_sides = self._get_selected_inlet_count()
+        val = 360.0 / n_sides if n_sides > 0 else 360.0
+        val_str = f"{int(val)}" if val.is_integer() else f"{val:.1f}"
+        self._side_theta_entry.configure(state="normal")
+        self._side_theta_entry.delete(0, "end")
+        self._side_theta_entry.insert(0, val_str)
+        self._side_theta_entry.configure(state="disabled")
 
-        if spacing_val.lower() == "equispaced":
-            val = 360.0 / n_sides if n_sides > 0 else 360.0
-            val_str = f"{int(val)}" if val.is_integer() else f"{val:.1f}"
-            self._side_theta_entry.configure(state="normal")
-            self._side_theta_entry.delete(0, "end")
-            self._side_theta_entry.insert(0, val_str)
-            self._side_theta_entry.configure(state="disabled")
-            self._spacing_hint_label.configure(
-                text=f"Equispaced: distribuisce {n_sides} inlet in modo uniforme sui 360° con ampiezza fissa = {val_str}° (360° / {n_sides}). "
-                     "Il valore è calcolato automaticamente e non modificabile."
-            )
-        else:
-            self._side_theta_entry.configure(state="normal")
-            max_user = max(1, n_sides - 1)
-            raw = self._side_theta_entry.get().strip()
-            try:
-                parts = [float(x.strip()) for x in raw.split(",") if x.strip()][:max_user]
-            except ValueError:
-                parts = []
-            if len(parts) != max_user:
-                def_w = 360.0 / n_sides if n_sides > 0 else 120.0
-                def_w_str = f"{int(def_w)}" if def_w.is_integer() else f"{def_w:.1f}"
-                self._side_theta_entry.delete(0, "end")
-                self._side_theta_entry.insert(0, ", ".join([def_w_str] * max_user))
-            self._update_contiguous_hint()
-
-    def _update_contiguous_hint(self):
-        """Update hint in contiguous mode showing user values and the auto-determined last sector."""
-        n_sides = self._get_selected_inlet_count()
-        max_user = max(1, n_sides - 1)
-        raw = self._side_theta_entry.get().strip()
+        inlet_word = i18n.t("inlets_plural") if n_sides != 1 else i18n.t("inlets_singular")
+        hint_template = i18n.t("spacing_hint_equispaced")
         try:
-            if "," in raw:
-                vals = [float(x.strip()) for x in raw.split(",") if x.strip()][:max_user]
-            else:
-                vals = [float(raw)] if raw else []
-        except ValueError:
-            vals = []
-
-        if vals:
-            u_sum = sum(vals)
-            auto_last = max(0.0, 360.0 - u_sum)
-            auto_str = f"{int(auto_last)}" if auto_last.is_integer() else f"{auto_last:.1f}"
-            vals_str = ", ".join(f"{v:.0f}°" for v in vals)
-            self._spacing_hint_label.configure(
-                text=f"Contiguous: per {n_sides} inlet puoi impostare fino a {max_user} ampiezze ({vals_str}). "
-                     f"L'ultimo inlet è calcolato automaticamente = {auto_str}° per completare i 360°."
-            )
-        else:
-            self._spacing_hint_label.configure(
-                text=f"Contiguous: per {n_sides} inlet, imposta fino a {max_user} valori separati da virgola. "
-                     "L'ultimo inlet è calcolato automaticamente = 360° - somma."
-            )
+            hint_text = hint_template.format(n_sides=n_sides, val_str=val_str, inlets=inlet_word)
+        except Exception:
+            hint_text = f"Equispaced: distributes {n_sides} {inlet_word} uniformly across 360° with fixed width = {val_str}°."
+        self._spacing_hint_label.configure(text=hint_text)
 
     def _on_side_inlet_box_changed(self, value: str):
         """Called when user chooses a number (0..10) from the top-bar box."""
@@ -803,8 +761,6 @@ class ParametersView(customtkinter.CTkFrame):
             self._autorot_timer_id = self.after(35, self._step_autorotation)
 
     def _on_side_param_changed(self, *args):
-        if self._side_spacing_var.get().lower() == "contiguous":
-            self._update_contiguous_hint()
         if self._rot_debounce_id is not None:
             self.after_cancel(self._rot_debounce_id)
         self._rot_debounce_id = self.after(150, self._dynamic_update_dual)
@@ -822,40 +778,8 @@ class ParametersView(customtkinter.CTkFrame):
 
     def _parse_side_inlet_params(self):
         n_sides = self._get_selected_inlet_count()
-        spacing = self._side_spacing_var.get().lower()
-
-        if spacing == "equispaced":
-            theta = 360.0 / n_sides if n_sides > 0 else 360.0
-        else:
-            # Contiguous: user can set at most n_sides - 1 values; last is automatically determined
-            max_user = max(1, n_sides - 1)
-            theta_text = self._side_theta_entry.get().strip()
-            try:
-                if "," in theta_text:
-                    vals = [float(x.strip()) for x in theta_text.split(",") if x.strip()][:max_user]
-                else:
-                    vals = [float(theta_text)] if theta_text else []
-            except ValueError:
-                vals = []
-
-            if not vals:
-                def_w = 360.0 / n_sides if n_sides > 0 else 120.0
-                vals = [def_w] * max_user
-
-            if len(vals) < max_user:
-                missing = max_user - len(vals)
-                rem = max(0.0, 360.0 - sum(vals))
-                step = rem / (missing + 1)
-                vals = vals + [step] * missing
-
-            s = sum(vals)
-            if s >= 359.0:
-                scale = 358.0 / s
-                vals = [v * scale for v in vals]
-                s = sum(vals)
-
-            last_val = max(1.0, 360.0 - s)
-            theta = vals + [last_val]
+        spacing = "equispaced"
+        theta = 360.0 / n_sides if n_sides > 0 else 360.0
 
         # rotation
         try:

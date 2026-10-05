@@ -43,6 +43,9 @@ TRANSLATIONS = {
         "settings_about": "About",
         
         "language_select": "Language",
+        "spacing_hint_equispaced": "Equispaced: distributes {n_sides} {inlets} uniformly across 360° with fixed width = {val_str}° (360° / {n_sides}). Automatically calculated and non-editable.",
+        "inlets_singular": "inlet",
+        "inlets_plural": "inlets",
     },
     "Italian": {
         "nav_viewer": "Visualizzatore GLB",
@@ -82,6 +85,9 @@ TRANSLATIONS = {
         "settings_about": "Informazioni",
         
         "language_select": "Lingua",
+        "spacing_hint_equispaced": "Equispaziato: distribuisce {n_sides} {inlets} in modo uniforme sui 360° con ampiezza fissa = {val_str}° (360° / {n_sides}). Il valore è calcolato automaticamente e non modificabile.",
+        "inlets_singular": "inlet",
+        "inlets_plural": "inlet",
     },
     "French": {
         "nav_viewer": "Visionneuse GLB",
@@ -121,6 +127,9 @@ TRANSLATIONS = {
         "settings_about": "À propos",
         
         "language_select": "Langue",
+        "spacing_hint_equispaced": "Équiréparti : distribue uniformément {n_sides} {inlets} sur 360° avec une largeur fixe = {val_str}° (360° / {n_sides}). Valeur calculée automatiquement et non modifiable.",
+        "inlets_singular": "entrée",
+        "inlets_plural": "entrées",
     },
     "Spanish": {
         "nav_viewer": "Visor GLB",
@@ -160,6 +169,9 @@ TRANSLATIONS = {
         "settings_about": "Acerca de",
         
         "language_select": "Idioma",
+        "spacing_hint_equispaced": "Equiespaciado: distribuye uniformemente {n_sides} {inlets} en 360° con un ancho fijo = {val_str}° (360° / {n_sides}). Valor calculado automáticamente y no modificable.",
+        "inlets_singular": "entrada",
+        "inlets_plural": "entradas",
     },
     "German": {
         "nav_viewer": "GLB-Viewer",
@@ -199,6 +211,9 @@ TRANSLATIONS = {
         "settings_about": "Über",
         
         "language_select": "Sprache",
+        "spacing_hint_equispaced": "Gleichmäßig: verteilt {n_sides} {inlets} gleichmäßig über 360° mit fester Breite = {val_str}° (360° / {n_sides}). Automatisch berechnet und nicht änderbar.",
+        "inlets_singular": "Einlass",
+        "inlets_plural": "Einlässe",
     }
 }
 
