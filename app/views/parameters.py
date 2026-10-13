@@ -392,7 +392,7 @@ class ParametersView(customtkinter.CTkFrame):
             row2, image=get_line_sample_icon((WALL_COLOR, "#E5E7EB"), style="dashed"), text=""
         ).pack(side="left", padx=(0, 6))
         customtkinter.CTkLabel(
-            row2, text="Nozzle diameter (R = 1.0 mm)", font=FONTS["dsi_value"], text_color=COLORS["text_primary"]
+            row2, text="Nozzle diameter: 2.0 mm (R = 1.0 mm)", font=FONTS["dsi_value"], text_color=COLORS["text_primary"]
         ).pack(side="left", padx=(0, 24))
 
         customtkinter.CTkLabel(

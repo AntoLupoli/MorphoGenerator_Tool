@@ -1,22 +1,49 @@
 """
 Morphological correlation functions for the Morphogenerator.
 
-Every curve is a cubic polynomial of the form:
-    Y(Q) = a₃·Q³ + a₂·Q² + a₁·Q + a₀
+Modello Globale Unificato (Bivariate Polynomial & Exact Closed Analytical Propagation):
+Source: txt_to_image/output/correlation_ext_int_report.md
 
-The coefficients were obtained by fitting experimental data from COMSOL
-simulations. Only N ∈ {2, 3, 4, 5, 6} are supported.
+Bivariate polynomial basis:
+    Y(Q, N) = ∑_{i=0}^3 ∑_{j=0}^3 c_{ij} · Q^i · N^j
 
-The valid Q range is [0.01, 0.99]. Values outside this range are rejected.
+Nozzle / Channel Geometry Reference:
+    - Raggio canale (R):     1.0 mm
+    - Diametro nozzle (D):    2.0 mm (D = 2 · R)
+    - Circonferenza ref:      2πR = 6.283185307179586 mm
+
+Fitted Primitive Models (R² > 0.99):
+    - P_int(Q, N) : Internal Petal Perimeter [mm]
+    - P_ext(Q, N) : External Petal Perimeter [mm]
+    - Area(Q, N)  : Total Petal Area [mm²]
+
+Analytically Propagated Quantities (Exact Closure, 0 additional free parameters):
+    - P_tot(Q, N)   = P_int(Q, N) + P_ext(Q, N)
+    - DSI_int(Q, N) = (N · P_int(Q, N)) / (2πR)
+    - DSI_ext(Q, N) = (N · P_ext(Q, N)) / (2πR)
+    - DSI_tot(Q, N) = DSI_int + DSI_ext = (N · P_tot(Q, N)) / (2πR)
+
+Supported discrete nozzle counts: N ∈ {2, 3, 4, 5, 6}.
+Valid Q range: [0.01, 0.99].
 """
 
 import numpy as np
 
-# Valid ranges
+# Valid ranges & physical constants
 
 Q_MIN = 0.01
 Q_MAX = 0.99
 VALID_N = [2, 3, 4, 5, 6]
+
+# Nozzle & reference geometry:
+# Channel radius R = 1.0 mm  -->  Nozzle diameter D = 2.0 mm (NOT 1.0 mm)
+R_NOZZLE_MM = 1.0
+D_NOZZLE_MM = 2.0 * R_NOZZLE_MM  # 2.0 mm
+P_CIRC_REF_MM = 2.0 * np.pi * R_NOZZLE_MM  # 2πR ≈ 6.2831853 mm
+
+# Polynomial degrees
+DEG_Q = 3
+DEG_N = 3
 
 # Metric categories
 
@@ -58,58 +85,94 @@ SHORT_NAMES = {
     "DSI Total":                "DSI Total",
 }
 
-# Polynomial coefficients: {metric: {N: [a₃, a₂, a₁, a₀]}}
+# Bivariate coefficient matrices c[i, j] for Q^i · N^j
+# Rows correspond to Q^0, Q^1, Q^2, Q^3 (i in 0..3)
+# Columns correspond to N^0, N^1, N^2, N^3 (j in 0..3)
 
+BIVARIATE_COEFFICIENTS = {
+    # Internal Petal Perimeter [P_int] (Fitted Primitive, R² = 0.990188)
+    "Internal Petal Perimeter": np.array([
+        # N^0        N^1        N^2        N^3
+        [+7.866852, -2.735747, +0.521865, -0.035625],  # Q^0
+        [-13.317776, +17.640566, -4.266650, +0.319224],  # Q^1
+        [+48.946664, -46.706660, +11.046280, -0.822900],  # Q^2
+        [-33.605749, +29.320843, -6.939346, +0.519482],  # Q^3
+    ], dtype=float),
+
+    # External Petal Perimeter [P_ext] (Fitted Primitive, R² = 0.997497)
+    "External Petal Perimeter": np.array([
+        # N^0        N^1        N^2        N^3
+        [+0.713966, -0.558472, +0.152451, -0.012643],  # Q^0
+        [+3.152727, +1.081345, -0.503050, +0.043394],  # Q^1
+        [+6.059566, -8.865982, +2.128465, -0.142183],  # Q^2
+        [-7.445607, +7.616842, -1.633423, +0.099934],  # Q^3
+    ], dtype=float),
+
+    # Total Petal Area [Area] (Fitted Primitive, R² = 0.998848)
+    "Total Petal Area": np.array([
+        # N^0        N^1        N^2        N^3
+        [-0.505345, +0.389555, -0.090306, +0.006574],  # Q^0
+        [+6.888808, -3.827875, +0.788832, -0.054647],  # Q^1
+        [-6.993354, +4.244121, -0.877961, +0.060303],  # Q^2
+        [+4.236151, -2.311432, +0.442289, -0.028690],  # Q^3
+    ], dtype=float),
+}
+
+# Analytically Propagated: Total Petal Perimeter P_tot = P_int + P_ext (R² = 0.994953)
+BIVARIATE_COEFFICIENTS["Total Petal Perimeter"] = (
+    BIVARIATE_COEFFICIENTS["Internal Petal Perimeter"] +
+    BIVARIATE_COEFFICIENTS["External Petal Perimeter"]
+)
+
+
+def get_cubic_coefficients(metric: str, N: int) -> list:
+    """Return cubic polynomial coefficients [a₃, a₂, a₁, a₀] for Y(Q) at fixed N.
+
+    For fixed N, the bivariate model reduces exactly to:
+        Y(Q) = a₃·Q³ + a₂·Q² + a₁·Q + a₀
+    where a_i = ∑_{j=0}^3 c_{ij} · N^j.
+    For DSI metrics, the coefficients are scaled by N / (2πR).
+    """
+    n_vec = np.array([1.0, float(N), float(N)**2, float(N)**3], dtype=float)
+
+    if metric in BIVARIATE_COEFFICIENTS:
+        C = BIVARIATE_COEFFICIENTS[metric]
+        a = C @ n_vec  # [a0, a1, a2, a3]
+        return [float(a[3]), float(a[2]), float(a[1]), float(a[0])]
+
+    if metric == "DSI Internal":
+        a_int = get_cubic_coefficients("Internal Petal Perimeter", N)
+        factor = float(N) / P_CIRC_REF_MM
+        return [factor * c for c in a_int]
+
+    if metric == "DSI External":
+        a_ext = get_cubic_coefficients("External Petal Perimeter", N)
+        factor = float(N) / P_CIRC_REF_MM
+        return [factor * c for c in a_ext]
+
+    if metric == "DSI Total":
+        a_tot = get_cubic_coefficients("Total Petal Perimeter", N)
+        factor = float(N) / P_CIRC_REF_MM
+        return [factor * c for c in a_tot]
+
+    raise ValueError(f"Unknown metric: '{metric}'")
+
+
+# Precomputed cubic polynomial coefficients dictionary: {metric: {N: [a₃, a₂, a₁, a₀]}}
+# Preserved for full backwards-compatibility with solver.py and statistics.py
 COEFFICIENTS = {
-    "Internal Petal Perimeter": {
-        2: [  1.480436,  -6.949856,  7.501355,  4.198959],
-        3: [  5.418526, -13.241744,  9.525170,  3.394150],
-        4: [  6.171101, -14.315808,  9.713269,  3.000551],
-        5: [  4.400335, -11.151966,  7.966273,  2.798599],
-        6: [  4.757035, -11.458686,  7.929430,  2.545620],
-    },
-    "External Petal Perimeter": {
-        2: [ 2.030400, -4.274735,  3.647762,  0.104651],
-        3: [ 3.822241, -5.699046,  3.146092,  0.069136],
-        4: [ 3.142030, -4.321027,  2.190873,  0.103954],
-        5: [ 2.388670, -2.916607,  1.417846,  0.156555],
-        6: [ 1.014582, -1.201776,  0.901441,  0.119362],
-    },
-    "Total Petal Area": {
-        2: [ 1.176846, -1.573230,  1.970099, -0.036567],
-        3: [ 0.412140, -0.379643,  0.953667,  0.034825],
-        4: [ 0.374425, -0.437032,  0.814555,  0.018516],
-        5: [ 0.086312, -0.081790,  0.584219,  0.014289],
-        6: [ 0.116865, -0.148378,  0.534730, -0.000845],
-    },
-    "Total Petal Perimeter": {
-        2: [  3.510836, -11.224591, 11.149116,  4.303610],
-        3: [  9.240767, -18.940790, 12.671262,  3.463286],
-        4: [  9.313131, -18.636835, 11.904143,  3.104505],
-        5: [  6.789005, -14.068573,  9.384119,  2.955154],
-        6: [  5.771617, -12.660463,  8.830871,  2.664982],
-    },
-    "DSI Internal": {
-        2: [ 0.942953,  -4.426660,  4.777933,  2.674496],
-        3: [ 5.176935, -12.651348,  9.100481,  3.242819],
-        4: [ 7.861275, -18.236699, 12.373592,  3.822358],
-        5: [ 7.006902, -17.757907, 12.685149,  4.456368],
-        6: [ 9.089875, -21.895579, 15.151776,  4.864243],
-    },
-    "DSI External": {
-        2: [ 1.293248, -2.722761,  2.323415,  0.066657],
-        3: [ 3.651823, -5.444949,  3.005820,  0.066053],
-        4: [ 4.002586, -5.504493,  2.790921,  0.132426],
-        5: [ 3.803615, -4.644278,  2.257716,  0.249291],
-        6: [ 1.938692, -2.296388,  1.722499,  0.228080],
-    },
-    "DSI Total": {
-        2: [  2.236201,  -7.149421,  7.101348,  2.741153],
-        3: [  8.828758, -18.096297, 12.106301,  3.308872],
-        4: [ 11.863862, -23.741192, 15.164513,  3.954784],
-        5: [ 10.810517, -22.402186, 14.942865,  4.705659],
-        6: [ 11.028568, -24.191967, 16.874275,  5.092323],
-    },
+    metric: {
+        n: get_cubic_coefficients(metric, n) for n in VALID_N
+    }
+    for metric in [
+        "Internal Petal Perimeter",
+        "External Petal Perimeter",
+        "Total Petal Area",
+        "Total Petal Perimeter",
+        "DSI Internal",
+        "DSI External",
+        "DSI Total",
+    ]
 }
 
 
@@ -135,9 +198,9 @@ def validate_N(metric: str, N: int) -> None:
 
 
 def evaluate(metric: str, N: int, Q: float) -> float:
-    """Evaluate the polynomial correlation for given metric, N, and Q.
+    """Evaluate the correlation for given metric, N, and Q.
 
-    Returns the scalar output value Y(Q).
+    Returns the scalar output value Y(Q, N).
     """
     validate_Q(Q)
     validate_N(metric, N)
@@ -146,10 +209,37 @@ def evaluate(metric: str, N: int, Q: float) -> float:
 
 
 def evaluate_range(metric: str, N: int, Q_array) -> np.ndarray:
-    """Evaluate the polynomial for an array of Q values (vectorised)."""
+    """Evaluate the correlation for an array of Q values at fixed N (vectorised)."""
     Q_arr = np.asarray(Q_array, dtype=float)
     a3, a2, a1, a0 = COEFFICIENTS[metric][N]
     return a3 * Q_arr**3 + a2 * Q_arr**2 + a1 * Q_arr + a0
+
+
+def evaluate_bivariate(metric: str, Q, N) -> np.ndarray:
+    """Direct bivariate evaluation for arbitrary Q and N (scalar or array)."""
+    Q_arr = np.asarray(Q, dtype=float)
+    N_arr = np.asarray(N, dtype=float)
+
+    def _eval_matrix(C: np.ndarray, q, n):
+        res = np.zeros_like(q * n, dtype=float)
+        for i in range(DEG_Q + 1):
+            for j in range(DEG_N + 1):
+                res = res + C[i, j] * (q**i) * (n**j)
+        return res
+
+    if metric in BIVARIATE_COEFFICIENTS:
+        return _eval_matrix(BIVARIATE_COEFFICIENTS[metric], Q_arr, N_arr)
+    if metric == "DSI Internal":
+        p_int = evaluate_bivariate("Internal Petal Perimeter", Q_arr, N_arr)
+        return (N_arr * p_int) / P_CIRC_REF_MM
+    if metric == "DSI External":
+        p_ext = evaluate_bivariate("External Petal Perimeter", Q_arr, N_arr)
+        return (N_arr * p_ext) / P_CIRC_REF_MM
+    if metric == "DSI Total":
+        p_tot = evaluate_bivariate("Total Petal Perimeter", Q_arr, N_arr)
+        return (N_arr * p_tot) / P_CIRC_REF_MM
+
+    raise ValueError(f"Unknown metric: '{metric}'")
 
 
 def get_available_N(metric: str) -> list:

@@ -328,9 +328,9 @@ class PlotCorrelationView(ctk.CTkFrame):
                         "External Petal Perimeter": external_boundary,
                         "Total Petal Area": area_petal_mm2,
                         "Total Petal Perimeter": perimeter_petal_mm,
-                        "DSI Internal": (perimeter_petal_mm - external_boundary) * n / np.pi,
-                        "DSI External": external_boundary * n / np.pi,
-                        "DSI Total": perimeter_petal_mm * n / np.pi
+                        "DSI Internal": (perimeter_petal_mm - external_boundary) * n / correlations.P_CIRC_REF_MM,
+                        "DSI External": external_boundary * n / correlations.P_CIRC_REF_MM,
+                        "DSI Total": perimeter_petal_mm * n / correlations.P_CIRC_REF_MM,
                     }
                     
                     for m_ui, val in vals.items():

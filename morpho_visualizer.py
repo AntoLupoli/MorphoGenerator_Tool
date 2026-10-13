@@ -587,7 +587,7 @@ class MorphoVisualizer:
             fill=False,
             linestyle="--",
             linewidth=1.2,
-            label=f"Outlet Nozzle (R={self.r_bottom:.2f} mm)",
+            label=f"Outlet Nozzle (D={2*self.r_bottom:.1f} mm, R={self.r_bottom:.2f} mm)",
         )
         ax_outlet.add_patch(outlet_circle)
 
