@@ -12,14 +12,18 @@
 - Quick preset views (Top, Isometric, Front, Side).
 
 ### 2. Morphogenerator Parameters
-- **Forward Design Mode**:
+- **Simulate Mode**:
   - Real-time calculation of internal, external, and total **DSI** (Degree of Swirling Interaction) and petal geometry metrics.
   - Supports flow ratios Q in [0.01, 0.99] across nozzle counts N in {2, 3, 4, 5, 6}.
   - Dynamic side inlet configuration: select number of peripheral inlets (0 to 10), angular width (theta), angular rotation (0° - 360°), and spacing distribution.
+  - **Multi-Inlet Modes**:
+    - **Angular (Sectors)**: Configure peripheral fluid streams from 1 to 10 inlets with adjustable angular width ($\theta$), rotation angle ($0^\circ - 360^\circ$), auto-rotation animation, and equispaced distribution.
+    - **Radial (Coaxial Rings)**: Configure concentric layered streams (1 to 10 concentric rings).
    
-- **Parametric Sweep**:
+- **Optimize Mode**:
   - Specify target DSI or perimeter metrics to analytically solve for matching (Q, N) pairs.
   - Instant side-by-side preview of predicted streamline topologies.
+
 
 ### 3. Correlation Plots
 - Choose different variables to plot.
