@@ -1,9 +1,9 @@
 """
-Select Parameters – Calculate / Find Parameters view.
+Select Parameters – Simulate / Optimize view.
 
-• Calculate:       Choose (N, Q) → display all output metrics in styled cards
+• Simulate:        Choose (N, Q) → display all output metrics in styled cards
                    alongside the corresponding streamline image.
-• Find Parameters: Choose a target metric + value → find (N, Q) pairs that
+• Optimize:        Choose a target metric + value → find (N, Q) pairs that
                    match within a tolerance band, shown as a sorted table.
 """
 
@@ -26,7 +26,7 @@ from app.core.solver import forward, inverse, parametric_sweep
 from app.core import correlations
 from app.core.image_loader import streamline_image_path
 import app.i18n as i18n
-from morpho_visualizer import (
+from app.core.sector_renderer import (
     get_visualizer_for_n,
     calculate_physical_radius,
     CENTRAL_COLOR,
@@ -34,12 +34,20 @@ from morpho_visualizer import (
     BLADE_UP_COLOR,
     WALL_COLOR,
 )
+from app.core.coaxial_renderer import (
+    get_visualizer_for_n as get_radial_visualizer_for_n,
+    MorphoVisualizerRadially,
+    CoaxialLayer,
+    RADIAL_PALETTE,
+    COAXIAL_COLOR_INNER,
+    COAXIAL_COLOR_OUTER,
+)
 
 
 # Main View
 
 class ParametersView(customtkinter.CTkFrame):
-    """'Select Parameters' panel with Calculate / Find Parameters modes."""
+    """'Select Parameters' panel with Simulate / Optimize modes."""
 
     def __init__(self, master, **kwargs):
         super().__init__(master, **kwargs)
@@ -50,15 +58,12 @@ class ParametersView(customtkinter.CTkFrame):
         self._photo_ref_dual = None     # prevent GC for dynamic dual visualization
         self._current_dual_pil = None   # raw PIL image for responsive resizing
         self._img_resize_timer = None   # debounce timer for configure resize
-        self._panel_left_width = 320    # default left panel width (cards/legend)
+        self._panel_left_width = 240    # default left panel width (cards)
         self._is_dragging_splitter = False
         self._drag_start_x = 0
-        self._drag_start_w = 320
+        self._drag_start_w = 240
         self._rot_debounce_id = None    # timer ID for debounced slider update
-        self._legend_frame = None       # reference to sectors legend frame under DSI cards
-        self._legend_sector_labels = [] # references to sector labels in legend for in-place updates
-        self._legend_core_label = None  # reference to core label in legend
-        self._fwd_legend_start_row = 10 # row index under result cards for legend
+        self._radial_debounce_id = None # timer ID for debounced radial update
 
         # Auto-rotation state
         self._is_autorotating = False
@@ -66,13 +71,20 @@ class ParametersView(customtkinter.CTkFrame):
         self._in_autorot_step = False
         self._side_n_var = customtkinter.StringVar(value="2")
 
+        # Inlet configuration variables
+        self._inlet_type_var = customtkinter.StringVar(value="Angular")
+        self._radial_layers_var = customtkinter.StringVar(value="2")
+        self._radial_mode_var = customtkinter.StringVar(value="Equal Area")
+        self._radial_color_mode_var = customtkinter.StringVar(value="Alternating")
+        self._radial_top_view_var = customtkinter.StringVar(value="Device")
+
         # Mode selector (top)
         top_bar = customtkinter.CTkFrame(self, fg_color="transparent")
         top_bar.pack(fill="x", padx=PAD_LG, pady=(PAD_LG, PAD_SM))
 
         self._mode_btn = customtkinter.CTkSegmentedButton(
             top_bar,
-            values=["Calculate", "Find Parameters"],
+            values=["Simulate", "Optimize"],
             command=self._on_mode_change,
             font=FONTS["subheading"],
             selected_color=COLORS["accent"],
@@ -83,7 +95,7 @@ class ParametersView(customtkinter.CTkFrame):
             text_color_disabled=COLORS["text_tertiary"],
             corner_radius=CORNER_RADIUS,
         )
-        self._mode_btn.set("Calculate")
+        self._mode_btn.set("Simulate")
         self._mode_btn.pack(side="left")
 
         btn_help = customtkinter.CTkButton(
@@ -96,19 +108,19 @@ class ParametersView(customtkinter.CTkFrame):
 
         # Dynamic subtitle (description of the active mode)
         self._MODE_DESCS = {
-            "Calculate":       "Select N and Q to compute all output metrics.",
-            "Find Parameters": "Specify a target metric and value to find matching (N, Q) pairs.",
+            "Simulate": "Select N and Q to compute all output metrics.",
+            "Optimize": "Specify a target metric and value to find matching (N, Q) pairs.",
         }
         self._subtitle_label = customtkinter.CTkLabel(
             self,
-            text=self._MODE_DESCS["Calculate"],
+            text=self._MODE_DESCS["Simulate"],
             font=FONTS["body"],
             text_color=COLORS["text_tertiary"],
             anchor="w",
         )
         self._subtitle_label.pack(fill="x", padx=PAD_LG, pady=(0, PAD_SM))
 
-        # Container that swaps between calculate / find parameters
+        # Container that swaps between simulate / optimize
         self._container = customtkinter.CTkFrame(self, fg_color="transparent")
         self._container.pack(fill="both", expand=True,
                              padx=PAD_LG, pady=(0, PAD_LG))
@@ -117,7 +129,7 @@ class ParametersView(customtkinter.CTkFrame):
         self._fwd_frame = self._build_forward_panel(self._container)
         self._inv_frame = self._build_inverse_panel(self._container)
 
-        # Show Calculate panel by default
+        # Show Simulate panel by default
         self._fwd_frame.pack(fill="both", expand=True)
         self.after(100, self._on_fwd_calculate)
 
@@ -128,7 +140,7 @@ class ParametersView(customtkinter.CTkFrame):
     def _on_mode_change(self, mode: str):
         self._stop_autorotation()
         self._subtitle_label.configure(text=self._MODE_DESCS.get(mode, ""))
-        if mode == "Calculate":
+        if mode == "Simulate":
             self._inv_frame.pack_forget()
             self._fwd_frame.pack(fill="both", expand=True)
         else:
@@ -178,7 +190,7 @@ class ParametersView(customtkinter.CTkFrame):
 
         # N info label
         customtkinter.CTkLabel(
-            ctrl, text="number of blades",
+            ctrl, text="blade pair count",
             font=FONTS["caption"],
             text_color=COLORS["text_secondary"],
         ).grid(row=1, column=0, columnspan=2, padx=(PAD_LG, PAD_LG), pady=(0, PAD_SM), sticky="w")
@@ -219,20 +231,55 @@ class ParametersView(customtkinter.CTkFrame):
             text_color=COLORS["text_secondary"],
         ).grid(row=1, column=2, columnspan=3, padx=(PAD_LG, PAD_SM), pady=(0, PAD_SM), sticky="w")
 
-        # "Select the number of peripheral inlets:" control frame (non-clickable label + combo box)
-        side_ctrl = customtkinter.CTkFrame(ctrl, fg_color="transparent")
-        side_ctrl.grid(row=0, column=5, padx=(PAD_SM, PAD_LG), pady=(PAD_MD, 2))
+        # Inlet Type selector (Angular vs Radial)
+        inlet_type_ctrl = customtkinter.CTkFrame(ctrl, fg_color="transparent")
+        inlet_type_ctrl.grid(row=0, column=5, padx=(PAD_MD, PAD_SM), pady=(PAD_MD, 2))
 
         customtkinter.CTkLabel(
-            side_ctrl,
-            text="Select the number of peripheral inlets:",
+            inlet_type_ctrl,
+            text="Inlet:",
             font=FONTS["body"],
             text_color=COLORS["text_primary"],
         ).pack(side="left", padx=(0, PAD_SM))
 
+        self._inlet_type_btn = customtkinter.CTkSegmentedButton(
+            inlet_type_ctrl,
+            values=["Angular", "Radial"],
+            variable=self._inlet_type_var,
+            command=self._on_inlet_type_changed,
+            font=FONTS["body"],
+            selected_color=COLORS["accent"],
+            selected_hover_color=COLORS["accent_hover"],
+            unselected_color=COLORS["bg_tertiary"],
+            unselected_hover_color=COLORS["bg_hover"],
+            text_color=COLORS["text_primary"],
+            corner_radius=CORNER_RADIUS,
+            height=32,
+        )
+        self._inlet_type_btn.set("Angular")
+        self._inlet_type_btn.pack(side="left")
+
+        customtkinter.CTkLabel(
+            ctrl, text="inlet type",
+            font=FONTS["caption"],
+            text_color=COLORS["text_secondary"],
+        ).grid(row=1, column=5, padx=(PAD_MD, PAD_SM), pady=(0, PAD_SM), sticky="w")
+
+        # Inlets / Rings count selector
+        side_ctrl = customtkinter.CTkFrame(ctrl, fg_color="transparent")
+        side_ctrl.grid(row=0, column=6, padx=(PAD_SM, PAD_LG), pady=(PAD_MD, 2))
+
+        self._inlet_count_label = customtkinter.CTkLabel(
+            side_ctrl,
+            text="Inlets:",
+            font=FONTS["body"],
+            text_color=COLORS["text_primary"],
+        )
+        self._inlet_count_label.pack(side="left", padx=(0, PAD_SM))
+
         self._side_inlet_box = customtkinter.CTkComboBox(
             side_ctrl,
-            values=["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+            values=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
             width=68,
             height=34,
             font=FONTS["body"],
@@ -250,6 +297,13 @@ class ParametersView(customtkinter.CTkFrame):
         self._side_inlet_box.set("1")
         self._side_inlet_box.pack(side="left")
         self._side_inlet_box.bind("<KeyRelease>", self._on_side_inlet_box_typed)
+
+        self._inlet_count_caption = customtkinter.CTkLabel(
+            ctrl, text="number of peripheral inlets (1 – 10)",
+            font=FONTS["caption"],
+            text_color=COLORS["text_secondary"],
+        )
+        self._inlet_count_caption.grid(row=1, column=6, padx=(PAD_SM, PAD_LG), pady=(0, PAD_SM), sticky="w")
 
         # Collapsible Side Inlet Configuration Panel (only active for >= 2)
         self._side_inlet_frame = customtkinter.CTkFrame(
@@ -283,9 +337,7 @@ class ParametersView(customtkinter.CTkFrame):
         self._fwd_cards_frame.columnconfigure(0, weight=1)
         self._fwd_cards_frame.columnconfigure(1, weight=1)
 
-        # Legend container (always on the left, below cards when count<=1, top when count>=2)
-        self._fwd_legend_container = customtkinter.CTkFrame(self._fwd_results_panel, fg_color="transparent")
-        self._fwd_legend_container.pack(fill="x", pady=(0, PAD_SM // 2))
+
 
         # MIDDLE: Interactive Resize Splitter Handle
         self._resize_handle = customtkinter.CTkFrame(
@@ -322,6 +374,9 @@ class ParametersView(customtkinter.CTkFrame):
         self._img_panel.grid(row=0, column=2, sticky="nsew", padx=(2, 0))
         self._img_panel.columnconfigure(0, weight=1)
         self._img_panel.bind("<Configure>", self._on_img_panel_configure)
+        self._fwd_results_area.bind("<Configure>", self._on_img_panel_configure)
+        if hasattr(self._img_panel, "_parent_canvas") and self._img_panel._parent_canvas is not None:
+            self._img_panel._parent_canvas.bind("<Configure>", self._on_img_panel_configure)
 
         # Container 1: PNG Streamline previews (Central View & Side View)
         self._png_container = customtkinter.CTkFrame(self._img_panel, fg_color="transparent")
@@ -346,60 +401,101 @@ class ParametersView(customtkinter.CTkFrame):
 
         self._fwd_colored_image_label = customtkinter.CTkLabel(
             self._colored_container,
-            text="Click 'Calculate' to render Visualization",
+            text="Click 'Simulate' to render Visualization",
             fg_color="transparent",
             font=FONTS["body"],
             text_color=COLORS["text_tertiary"],
         )
         self._fwd_colored_image_label.pack(fill="both", expand=True, padx=PAD_MD, pady=(PAD_SM, 0))
 
-        # Under-plot legend: Down blade, Upper blade, Central channel, Distribution chamber
+        # Under-plot bar: Legend in center, Zoom scale docked in bottom-right
         self._fwd_blade_legend_frame = customtkinter.CTkFrame(
             self._colored_container, fg_color="transparent"
         )
-        self._fwd_blade_legend_frame.pack(fill="x", padx=PAD_MD, pady=(6, PAD_SM))
+        self._fwd_blade_legend_frame.pack(fill="x", padx=PAD_MD, pady=(4, PAD_SM))
 
+        # Center: Legend bar
         blade_bar = customtkinter.CTkFrame(
             self._fwd_blade_legend_frame,
             fg_color=COLORS["bg_tertiary"],
             corner_radius=8,
         )
-        blade_bar.pack(anchor="center")
+        blade_bar.pack(anchor="center", pady=2)
 
-        # Row 1: Blades (Font size synchronized with DSI number)
-        row1 = customtkinter.CTkFrame(blade_bar, fg_color="transparent")
-        row1.pack(anchor="center", padx=16, pady=(6, 3))
+        # Row 1: Inlets (Central + Peripheral) & Blades (Down + Upper)
+        self._legend_row_blades = customtkinter.CTkFrame(blade_bar, fg_color="transparent")
+        self._legend_row_blades.pack(anchor="center", padx=10, pady=(4, 2))
+
+        # Central inlet item
+        self._legend_central_inlet_box = customtkinter.CTkFrame(self._legend_row_blades, fg_color="transparent")
+        self._legend_central_inlet_box.pack(side="left", padx=(0, 10))
+        customtkinter.CTkLabel(
+            self._legend_central_inlet_box,
+            text="●",
+            font=FONTS["body_bold"],
+            text_color=CENTRAL_COLOR,
+        ).pack(side="left", padx=(0, 3))
+        customtkinter.CTkLabel(
+            self._legend_central_inlet_box,
+            text="Central inlet",
+            font=FONTS["caption"],
+            text_color=COLORS["text_primary"],
+        ).pack(side="left")
+
+        # Peripheral inlets item (dynamic colored dots + single label)
+        self._legend_peripheral_inlet_box = customtkinter.CTkFrame(self._legend_row_blades, fg_color="transparent")
+        self._legend_peripheral_inlet_box.pack(side="left", padx=(0, 10))
+        self._legend_peripheral_dots_frame = customtkinter.CTkFrame(
+            self._legend_peripheral_inlet_box, fg_color="transparent"
+        )
+        self._legend_peripheral_dots_frame.pack(side="left", padx=(0, 3))
+        self._legend_peripheral_text_label = customtkinter.CTkLabel(
+            self._legend_peripheral_inlet_box,
+            text="Peripheral inlets",
+            font=FONTS["caption"],
+            text_color=COLORS["text_primary"],
+        )
+        self._legend_peripheral_text_label.pack(side="left")
+
+        # Down blade item
+        self._legend_down_blade_box = customtkinter.CTkFrame(self._legend_row_blades, fg_color="transparent")
+        self._legend_down_blade_box.pack(side="left", padx=(0, 10))
+        customtkinter.CTkLabel(
+            self._legend_down_blade_box, image=get_line_sample_icon(BLADE_DOWN_COLOR, style="solid"), text=""
+        ).pack(side="left", padx=(0, 4))
+        customtkinter.CTkLabel(
+            self._legend_down_blade_box, text="Down blade", font=FONTS["caption"], text_color=COLORS["text_primary"]
+        ).pack(side="left")
+
+        # Upper blade item
+        self._legend_upper_blade_box = customtkinter.CTkFrame(self._legend_row_blades, fg_color="transparent")
+        self._legend_upper_blade_box.pack(side="left", padx=(0, 0))
+        customtkinter.CTkLabel(
+            self._legend_upper_blade_box, image=get_line_sample_icon(BLADE_UP_COLOR, style="dotted"), text=""
+        ).pack(side="left", padx=(0, 4))
+        customtkinter.CTkLabel(
+            self._legend_upper_blade_box, text="Upper blade", font=FONTS["caption"], text_color=COLORS["text_primary"]
+        ).pack(side="left")
+
+        # Row 2: Nozzle diameter and Distribution chamber boundaries
+        self._legend_row_circles = customtkinter.CTkFrame(blade_bar, fg_color="transparent")
+        self._legend_row_circles.pack(anchor="center", padx=10, pady=(2, 4))
 
         customtkinter.CTkLabel(
-            row1, image=get_line_sample_icon(BLADE_DOWN_COLOR, style="solid"), text=""
-        ).pack(side="left", padx=(0, 6))
+            self._legend_row_circles, image=get_line_sample_icon((WALL_COLOR, "#E5E7EB"), style="dashed"), text=""
+        ).pack(side="left", padx=(0, 4))
         customtkinter.CTkLabel(
-            row1, text="Down blade", font=FONTS["dsi_value"], text_color=COLORS["text_primary"]
-        ).pack(side="left", padx=(0, 24))
+            self._legend_row_circles, text="Nozzle diameter: 2.0 mm", font=FONTS["caption"], text_color=COLORS["text_primary"]
+        ).pack(side="left", padx=(0, 14))
+
+        self._legend_dist_chamber_box = customtkinter.CTkFrame(self._legend_row_circles, fg_color="transparent")
+        self._legend_dist_chamber_box.pack(side="left", padx=(0, 0))
 
         customtkinter.CTkLabel(
-            row1, image=get_line_sample_icon(BLADE_UP_COLOR, style="dotted"), text=""
-        ).pack(side="left", padx=(0, 6))
+            self._legend_dist_chamber_box, image=get_line_sample_icon((WALL_COLOR, "#E5E7EB"), style="solid"), text=""
+        ).pack(side="left", padx=(0, 4))
         customtkinter.CTkLabel(
-            row1, text="Upper blade", font=FONTS["dsi_value"], text_color=COLORS["text_primary"]
-        ).pack(side="left", padx=(0, 0))
-
-        # Row 2: Nozzle diameter and Distribution chamber boundaries (Font size synchronized with DSI number)
-        row2 = customtkinter.CTkFrame(blade_bar, fg_color="transparent")
-        row2.pack(anchor="center", padx=16, pady=(3, 6))
-
-        customtkinter.CTkLabel(
-            row2, image=get_line_sample_icon((WALL_COLOR, "#E5E7EB"), style="dashed"), text=""
-        ).pack(side="left", padx=(0, 6))
-        customtkinter.CTkLabel(
-            row2, text="Nozzle diameter: 2.0 mm (R = 1.0 mm)", font=FONTS["dsi_value"], text_color=COLORS["text_primary"]
-        ).pack(side="left", padx=(0, 24))
-
-        customtkinter.CTkLabel(
-            row2, image=get_line_sample_icon((WALL_COLOR, "#E5E7EB"), style="solid"), text=""
-        ).pack(side="left", padx=(0, 6))
-        customtkinter.CTkLabel(
-            row2, text="Distribution chamber (R = 12.5 mm)", font=FONTS["dsi_value"], text_color=COLORS["text_primary"]
+            self._legend_dist_chamber_box, text="Distribution chamber", font=FONTS["caption"], text_color=COLORS["text_primary"]
         ).pack(side="left", padx=(0, 0))
 
         return frame
@@ -443,29 +539,28 @@ class ParametersView(customtkinter.CTkFrame):
         self._img_resize_timer = self.after(40, self._rescale_and_display_dual_image)
 
     def _build_side_inlet_panel(self, parent):
-        """Build the configuration panel for multi-sector side inlets."""
-        grid_frame = customtkinter.CTkFrame(parent, fg_color="transparent")
-        grid_frame.pack(fill="x", padx=PAD_LG, pady=(PAD_MD, PAD_MD))
+        """Build the configuration panel for both Angular (sectors) and Radial (concentric) inlets."""
+        # 1. Angular configuration sub-panel
+        self._angular_config_panel = customtkinter.CTkFrame(parent, fg_color="transparent")
 
-        # θ Rotation (0 to 360 with step 1)
         customtkinter.CTkLabel(
-            grid_frame, text="θ Rotation (°)", font=FONTS["body"],
+            self._angular_config_panel, text="θ Rotation (°):", font=FONTS["body"],
             text_color=COLORS["text_primary"],
-        ).grid(row=0, column=0, padx=(0, PAD_SM), pady=(PAD_SM, PAD_SM), sticky="w")
+        ).pack(side="left", padx=(0, PAD_SM))
 
         self._side_rot_entry = customtkinter.CTkEntry(
-            grid_frame, width=54, font=FONTS["mono"],
+            self._angular_config_panel, width=54, font=FONTS["mono"],
             fg_color=COLORS["bg_tertiary"],
             border_color=COLORS["border"],
             text_color=COLORS["text_primary"],
             placeholder_text="0",
         )
         self._side_rot_entry.insert(0, "0")
-        self._side_rot_entry.grid(row=0, column=1, padx=(0, PAD_SM), pady=(PAD_SM, PAD_SM))
+        self._side_rot_entry.pack(side="left", padx=(0, PAD_SM))
         self._side_rot_entry.bind("<KeyRelease>", self._on_side_rot_entry)
 
         self._side_rot_slider = customtkinter.CTkSlider(
-            grid_frame, from_=0, to=360, number_of_steps=360, width=160,
+            self._angular_config_panel, from_=0, to=360, number_of_steps=360, width=160,
             button_color=COLORS["accent"],
             button_hover_color=COLORS["accent_hover"],
             progress_color=COLORS["accent"],
@@ -473,12 +568,11 @@ class ParametersView(customtkinter.CTkFrame):
             command=self._on_side_rot_slider,
         )
         self._side_rot_slider.set(0)
-        self._side_rot_slider.grid(row=0, column=2, padx=(0, PAD_LG), pady=(PAD_SM, PAD_SM))
+        self._side_rot_slider.pack(side="left", padx=(0, PAD_LG))
         self._side_rot_slider.bind("<ButtonRelease-1>", self._on_side_rot_slider_release)
 
-        # Auto-rotation button (automatically rotates 0° to 360°)
         self._btn_autorot = customtkinter.CTkButton(
-            grid_frame,
+            self._angular_config_panel,
             text="Auto-rotate",
             font=FONTS["body"],
             fg_color=COLORS["bg_tertiary"],
@@ -488,24 +582,76 @@ class ParametersView(customtkinter.CTkFrame):
             height=32, width=100,
             command=self._toggle_autorotation,
         )
-        self._btn_autorot.grid(row=0, column=3, padx=(0, PAD_SM), pady=(PAD_SM, PAD_SM))
+        self._btn_autorot.pack(side="left", padx=(0, PAD_SM))
+
+        # 2. Radial configuration sub-panel
+        self._radial_config_panel = customtkinter.CTkFrame(parent, fg_color="transparent")
+
+        # Color mode
+        customtkinter.CTkLabel(
+            self._radial_config_panel, text="Colors:", font=FONTS["body"],
+            text_color=COLORS["text_primary"],
+        ).pack(side="left", padx=(0, PAD_SM))
+
+        self._radial_color_btn = customtkinter.CTkSegmentedButton(
+            self._radial_config_panel,
+            values=["Alternating", "Distinct"],
+            variable=self._radial_color_mode_var,
+            command=self._on_radial_param_changed,
+            font=FONTS["caption"],
+            selected_color=COLORS["accent"],
+            selected_hover_color=COLORS["accent_hover"],
+            unselected_color=COLORS["bg_tertiary"],
+            unselected_hover_color=COLORS["bg_hover"],
+            text_color=COLORS["text_primary"],
+            corner_radius=CORNER_RADIUS,
+            height=30,
+        )
+        self._radial_color_btn.set("Alternating")
+        self._radial_color_btn.pack(side="left", padx=(0, PAD_MD))
 
     def _get_selected_inlet_count(self) -> int:
         try:
             val = int(self._side_inlet_box.get().strip())
-            return max(0, min(10, val))
+            return max(1, min(10, val))
         except (ValueError, TypeError):
             return 1
 
+    def _get_selected_radial_layers(self) -> int:
+        try:
+            val = int(self._side_inlet_box.get().strip())
+            return max(1, min(10, val))
+        except (ValueError, TypeError):
+            return 2
+
+    def _on_inlet_type_changed(self, mode_str: str):
+        self._stop_autorotation()
+        if mode_str == "Angular":
+            self._inlet_count_label.configure(text="Inlets:")
+            self._side_inlet_box.configure(values=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"])
+            self._side_inlet_box.set(self._side_n_var.get())
+            self._inlet_count_caption.configure(text="number of peripheral inlets (1 – 10)")
+        else:
+            self._inlet_count_label.configure(text="Rings:")
+            self._side_inlet_box.configure(values=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"])
+            self._side_inlet_box.set(self._radial_layers_var.get())
+            self._inlet_count_caption.configure(text="concentric radial rings (1 – 10)")
+        self._update_display_mode()
+
     def _on_side_inlet_box_changed(self, value: str):
-        """Called when user chooses a number (0..10) from the top-bar box."""
+        """Called when user chooses a number from the count combo box."""
         try:
             val = int(value.strip())
-            val = max(0, min(10, val))
+            val = max(1, min(10, val))
         except (ValueError, TypeError):
             val = 1
 
-        self._side_n_var.set(str(val))
+        if self._inlet_type_var.get() == "Angular":
+            self._side_n_var.set(str(val))
+        else:
+            val = max(1, val)
+            self._radial_layers_var.set(str(val))
+
         self._update_display_mode()
 
     def _on_side_inlet_box_typed(self, event=None):
@@ -513,22 +659,14 @@ class ParametersView(customtkinter.CTkFrame):
         text = self._side_inlet_box.get().strip()
         if text.isdigit():
             val = int(text)
-            if 0 <= val <= 10:
+            if 1 <= val <= 10:
                 self._on_side_inlet_box_changed(str(val))
 
+    def _on_radial_param_changed(self, *args):
+        self._update_display_mode()
+
     def _update_display_mode(self, N: Optional[int] = None, Q: Optional[float] = None):
-        """Route to dual visualization for all peripheral inlet counts (0..10).
-        When count <= 1 (0 or 1 peripheral inlet):
-            - Hide side inlet configuration panel.
-            - Show metric calculation cards on the left (with legend below).
-            - Load dynamic dual plot with default parameters:
-                * count == 0: 0 peripheral inlets (central core only).
-                * count == 1: 1 peripheral sheath covering 360°.
-        When count >= 2 (2..10 peripheral inlets):
-            - Show side inlet configuration panel at the top.
-            - Hide metric calculation cards (only legend remains on the left).
-            - Load dynamic dual plot with user-configured parameters.
-        """
+        """Route to dual visualization for Angular or Radial inlet modes."""
         if N is None:
             try:
                 N = int(self._fwd_n_var.get())
@@ -540,48 +678,58 @@ class ParametersView(customtkinter.CTkFrame):
             except (ValueError, TypeError):
                 Q = 0.50
 
-        count = self._get_selected_inlet_count()
-
-        # Always hide PNG container – dual plots are used for all counts
+        # Always hide PNG container – dual plots are used for all configurations
         self._png_container.pack_forget()
-
-        # 3-column layout with draggable resize splitter:
-        # Col 0: Left panel (metrics + legend for count<=1; legend only for count>=2)
-        # Col 1: Resize handle
-        # Col 2: Right panel (dual plots)
-        self._fwd_results_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
-        self._resize_handle.grid(row=0, column=1, sticky="ns", padx=1)
-        self._img_panel.grid(row=0, column=2, sticky="nsew", padx=(2, 0))
-        self._fwd_results_area.columnconfigure(0, weight=0, minsize=self._panel_left_width)
-        self._fwd_results_area.columnconfigure(1, weight=0, minsize=10)
-        self._fwd_results_area.columnconfigure(2, weight=1)
 
         # Show colored container on right (dual plots)
         self._colored_container.pack(fill="both", expand=True, padx=PAD_SM, pady=(0, PAD_MD))
 
-        if count <= 1:
-            self._stop_autorotation()
-            # Hide side inlet config panel
-            self._side_inlet_frame.pack_forget()
+        inlet_type = self._inlet_type_var.get()
 
-            # Show metric cards frame (above legend)
-            self._fwd_cards_frame.pack(fill="x", pady=(0, PAD_SM // 2), before=self._fwd_legend_container)
+        if inlet_type == "Angular":
+            count = self._get_selected_inlet_count()
+            if count <= 1:
+                self._stop_autorotation()
+                self._side_inlet_frame.pack_forget()
+                # Single-inlet forward mode: show cards panel and splitter
+                self._fwd_results_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 2))
+                self._resize_handle.grid(row=0, column=1, sticky="ns", padx=1)
+                self._fwd_results_area.columnconfigure(0, weight=0, minsize=self._panel_left_width)
+                self._fwd_results_area.columnconfigure(1, weight=0, minsize=10)
+                self._fwd_results_area.columnconfigure(2, weight=1)
+                self._img_panel.grid(row=0, column=2, sticky="nsew", padx=(2, 0))
+                self._fwd_cards_frame.pack(fill="x", pady=(0, PAD_SM // 2))
 
-            # Load dynamic dual with fixed params
-            if count == 0:
-                self._load_dynamic_dual(N, Q, override_params=(0, 0.0, 0.0, "equispaced"))
-            else:
                 self._load_dynamic_dual(N, Q, override_params=(1, 360.0, 0.0, "equispaced"))
+            else:
+                self._side_inlet_frame.pack(fill="x", pady=(0, PAD_MD), before=self._fwd_results_area)
+                self._radial_config_panel.pack_forget()
+                self._angular_config_panel.pack(fill="x", padx=PAD_LG, pady=PAD_SM)
+                # Multi-inlet mode: hide empty left panel, expand plots to full window width!
+                self._fwd_cards_frame.pack_forget()
+                self._fwd_results_panel.grid_remove()
+                self._resize_handle.grid_remove()
+                self._fwd_results_area.columnconfigure(0, weight=0, minsize=0)
+                self._fwd_results_area.columnconfigure(1, weight=0, minsize=0)
+                self._fwd_results_area.columnconfigure(2, weight=1)
+                self._img_panel.grid(row=0, column=0, columnspan=3, sticky="nsew", padx=0)
+                self._load_dynamic_dual(N, Q)
         else:
-            # Count >= 2 (multiple peripheral inlets):
-            # Show side inlet config panel at top
+            # Radial inlet
+            self._stop_autorotation()
+            layers = self._get_selected_radial_layers()
             self._side_inlet_frame.pack(fill="x", pady=(0, PAD_MD), before=self._fwd_results_area)
-
-            # Hide metric cards frame (only legend remains on the left)
+            self._angular_config_panel.pack_forget()
+            self._radial_config_panel.pack(fill="x", padx=PAD_LG, pady=PAD_SM)
+            # Radial mode: hide empty left panel, expand plots to full window width!
             self._fwd_cards_frame.pack_forget()
-
-            # Load dynamic dual with configurable side inlet params
-            self._load_dynamic_dual(N, Q)
+            self._fwd_results_panel.grid_remove()
+            self._resize_handle.grid_remove()
+            self._fwd_results_area.columnconfigure(0, weight=0, minsize=0)
+            self._fwd_results_area.columnconfigure(1, weight=0, minsize=0)
+            self._fwd_results_area.columnconfigure(2, weight=1)
+            self._img_panel.grid(row=0, column=0, columnspan=3, sticky="nsew", padx=0)
+            self._load_dynamic_dual_radial(N, Q)
 
     def _on_side_rot_slider(self, value):
         if self._is_autorotating and not self._in_autorot_step:
@@ -892,7 +1040,6 @@ class ParametersView(customtkinter.CTkFrame):
                 font=FONTS["body"],
                 text_color=COLORS["text_tertiary"],
             )
-            self._fwd_colored_status_label.configure(text="")
             self._photo_ref_dual = None
             self._remove_sectors_legend()
             return
@@ -924,8 +1071,15 @@ class ParametersView(customtkinter.CTkFrame):
             self._current_dual_pil = pil_img
             self._rescale_and_display_dual_image()
 
-            # Render the external legend on the left panel (below cards if count<=1, top if count>=2)
-            self._render_sectors_legend(sectors, r_q, Q, viz.n_blades)
+            # Under-plot legend: show blades and distribution chamber
+            if hasattr(self, "_legend_row_blades") and self._legend_row_blades.winfo_exists():
+                self._legend_row_blades.pack(anchor="center", padx=12, pady=(4, 2), before=self._legend_row_circles)
+            if hasattr(self, "_legend_dist_chamber_box") and self._legend_dist_chamber_box.winfo_exists():
+                self._legend_dist_chamber_box.pack(side="left", padx=(0, 0))
+
+            # Update inlet markers in under-plot legend
+            peripheral_colors = [s.color for s in sectors]
+            self._update_under_plot_inlet_legend(peripheral_colors)
 
         except Exception as e:
             print("Error rendering dual planes:", e)
@@ -945,33 +1099,146 @@ class ParametersView(customtkinter.CTkFrame):
             self._photo_ref_dual = None
             self._remove_sectors_legend()
 
+    def _load_dynamic_dual_radial(self, N: int, Q: float):
+        """Generate and display Radial / Coaxial inlet & outlet planes using coaxial_renderer."""
+        viz = get_radial_visualizer_for_n(N)
+        if viz is None:
+            self._fwd_colored_image_label.configure(
+                image=None,
+                text=f"No streamline simulation file found for N = {N}.",
+                font=FONTS["body"],
+                text_color=COLORS["text_tertiary"],
+            )
+            self._photo_ref_dual = None
+            self._remove_sectors_legend()
+            return
+
+        try:
+            n_layers = self._get_selected_radial_layers()
+            mode = "equal_area"
+            color_mode = "alternating" if self._radial_color_mode_var.get() == "Alternating" else "distinct"
+            top_view = "morphogenerator"
+            r_split = None
+
+            bg_hex = "#FFFFFF"
+
+            pil_img, layers, r_q = viz.render_dual_pil(
+                q_ratio=Q,
+                n_layers=n_layers,
+                mode=mode,
+                r_split=r_split,
+                color_mode=color_mode,
+                top_view=top_view,
+                point_size=1.0,
+                alpha=0.75,
+                figsize=(9.6, 4.8),
+                dpi=120,
+                bg_color=bg_hex,
+                show_nozzle_circle=True,
+                show_grid=True,
+                show_legend=False,
+            )
+
+            self._current_dual_pil = pil_img
+            self._rescale_and_display_dual_image()
+
+            # Update under-plot legend (blades row + nozzle/chamber)
+            if hasattr(self, "_legend_row_blades") and self._legend_row_blades.winfo_exists():
+                self._legend_row_blades.pack(anchor="center", padx=12, pady=(4, 2), before=self._legend_row_circles)
+            if hasattr(self, "_legend_dist_chamber_box") and self._legend_dist_chamber_box.winfo_exists():
+                self._legend_dist_chamber_box.pack(side="left", padx=(0, 0))
+
+            # Update inlet markers in under-plot legend
+            peripheral_colors = [l.color for l in layers]
+            self._update_under_plot_inlet_legend(peripheral_colors)
+
+        except Exception as e:
+            print("Error rendering radial dual planes:", e)
+            try:
+                self._fwd_colored_image_label._label.configure(image="")
+            except Exception:
+                pass
+            try:
+                self._fwd_colored_image_label.configure(
+                    image=None,
+                    text=f"Error rendering radial visualization: {e}",
+                    font=FONTS["body"],
+                    text_color=COLORS["error"],
+                )
+            except Exception:
+                pass
+            self._photo_ref_dual = None
+            self._remove_sectors_legend()
+
     def _rescale_and_display_dual_image(self):
-        """Dynamically rescale the dual plot image to fit available width without clipping."""
+        """Dynamically rescale the dual plot image to fit available width and height, applying DPI correction and zoom factor."""
         if self._current_dual_pil is None:
             return
 
-        avail_w = self._img_panel.winfo_width()
-        if avail_w <= 100:
-            avail_w = max(350, self.winfo_width() - getattr(self, "_panel_left_width", 320) - 60)
-
-        # Account for scrollbar and container padding
-        usable_w = max(240, avail_w - 40)
-        orig_w, orig_h = self._current_dual_pil.size
-        scale = min(1.0, usable_w / orig_w)
-        target_size = (max(240, int(orig_w * scale)), max(120, int(orig_h * scale)))
-
-        if self._photo_ref_dual is not None and isinstance(self._photo_ref_dual, customtkinter.CTkImage):
-            self._photo_ref_dual.configure(
-                light_image=self._current_dual_pil,
-                dark_image=self._current_dual_pil,
-                size=target_size,
-            )
+        # 1. Determine visible canvas viewport in physical pixels
+        canvas = getattr(self._img_panel, "_parent_canvas", None)
+        if canvas is not None and canvas.winfo_exists() and canvas.winfo_width() > 100:
+            canvas_w = canvas.winfo_width()
+            canvas_h = canvas.winfo_height()
         else:
-            self._photo_ref_dual = customtkinter.CTkImage(
-                light_image=self._current_dual_pil,
-                dark_image=self._current_dual_pil,
-                size=target_size,
-            )
+            total_w = self._fwd_results_area.winfo_width()
+            if total_w <= 100:
+                total_w = max(600, self.winfo_width() - 40)
+            left_w = 0
+            if hasattr(self, "_fwd_results_panel") and self._fwd_results_panel.winfo_ismapped():
+                left_w = self._fwd_results_panel.winfo_width()
+                if left_w <= 10:
+                    left_w = getattr(self, "_panel_left_width", 240)
+            handle_w = 0
+            if hasattr(self, "_resize_handle") and self._resize_handle.winfo_ismapped():
+                handle_w = self._resize_handle.winfo_width()
+                if handle_w <= 2:
+                    handle_w = 10
+            canvas_w = max(240, total_w - left_w - handle_w - 24)
+
+            total_h = self._fwd_results_area.winfo_height()
+            if total_h <= 100:
+                total_h = max(350, self.winfo_height() - 200)
+            canvas_h = total_h
+
+        # 2. Subtract legend bar height and vertical paddings
+        legend_h = 0
+        if hasattr(self, "_fwd_blade_legend_frame") and self._fwd_blade_legend_frame.winfo_exists():
+            legend_h = self._fwd_blade_legend_frame.winfo_height()
+            if legend_h <= 10:
+                legend_h = self._fwd_blade_legend_frame.winfo_reqheight()
+        if legend_h <= 10:
+            legend_h = 65
+
+        # Reserve space for legend + margins so legend is never pushed below viewport
+        avail_pixel_w = max(180, canvas_w - 56)
+        avail_pixel_h = max(140, canvas_h - legend_h - 40)
+
+        # 3. Compute best-fit scale based on original PIL dimensions
+        orig_w, orig_h = self._current_dual_pil.size
+        scale_w = avail_pixel_w / orig_w
+        scale_h = avail_pixel_h / orig_h
+        base_scale = min(scale_w, scale_h)
+
+        # 4. Target physical dimensions based on best-fit
+        target_pw = max(50, int(orig_w * base_scale))
+        target_ph = max(40, int(orig_h * base_scale))
+
+        # 5. Convert physical pixels to CustomTkinter logical size using widget scaling
+        scaling = 1.0
+        if hasattr(self._fwd_colored_image_label, "_get_widget_scaling"):
+            scaling = self._fwd_colored_image_label._get_widget_scaling()
+        if scaling <= 0.1:
+            scaling = 1.0
+
+        logical_w = max(30, int(round(target_pw / scaling)))
+        logical_h = max(25, int(round(target_ph / scaling)))
+
+        self._photo_ref_dual = customtkinter.CTkImage(
+            light_image=self._current_dual_pil,
+            dark_image=self._current_dual_pil,
+            size=(logical_w, logical_h),
+        )
 
         try:
             self._fwd_colored_image_label.configure(image=self._photo_ref_dual, text="")
@@ -982,93 +1249,47 @@ class ParametersView(customtkinter.CTkFrame):
                 pass
             self._fwd_colored_image_label.configure(image=self._photo_ref_dual, text="")
 
-    def _render_sectors_legend(self, sectors, r_q: float, Q: float, n_blades: int):
-        """Render sector and central fluid legend on the LEFT panel (matching DSI font size)."""
-        # In-place update to prevent flicker during slider drag and auto-rotation
-        if (
-            self._legend_frame is not None
-            and self._legend_frame.winfo_exists()
-            and hasattr(self, "_legend_sector_labels")
-            and len(self._legend_sector_labels) == len(sectors)
-            and all(lbl.winfo_exists() for lbl in self._legend_sector_labels)
-        ):
-            if hasattr(self, "_legend_core_label") and self._legend_core_label is not None and self._legend_core_label.winfo_exists():
-                self._legend_core_label.configure(text=f"Central Fluid (Q={Q:.2f})")
-            for lbl, sec in zip(self._legend_sector_labels, sectors):
-                lbl.configure(text=f"{sec.name}: [{sec.angle_start:.0f}°–{sec.angle_start + sec.angle_width:.0f}°]")
+        # 6. Ensure viewport starts at top so legend is in full view
+        if canvas is not None and canvas.winfo_exists():
+            try:
+                canvas.yview_moveto(0.0)
+                canvas.xview_moveto(0.0)
+            except Exception:
+                pass
+
+    def _update_under_plot_inlet_legend(self, peripheral_colors: list[str]):
+        """Update the under-plot legend with Central inlet and dynamic Peripheral inlets markers."""
+        if not hasattr(self, "_legend_peripheral_dots_frame") or not self._legend_peripheral_dots_frame.winfo_exists():
             return
 
-        # DESTROY all previous children in legend container to guarantee no duplicate legends ever
-        self._remove_sectors_legend()
+        for w in self._legend_peripheral_dots_frame.winfo_children():
+            try:
+                w.destroy()
+            except Exception:
+                pass
 
-        self._legend_frame = customtkinter.CTkFrame(
-            self._fwd_legend_container,
-            fg_color=COLORS["bg_secondary"],
-            corner_radius=8,
-            border_width=1,
-            border_color=COLORS["border"],
-        )
-        self._legend_frame.pack(fill="x", expand=True, padx=2, pady=(PAD_SM // 2, PAD_SM))
+        if not peripheral_colors:
+            if hasattr(self, "_legend_peripheral_inlet_box") and self._legend_peripheral_inlet_box.winfo_exists():
+                self._legend_peripheral_inlet_box.pack_forget()
+            return
 
-        header = customtkinter.CTkFrame(self._legend_frame, fg_color="transparent")
-        header.pack(fill="x", padx=PAD_SM, pady=(PAD_SM // 2, 2))
-
-        customtkinter.CTkLabel(
-            header,
-            text="Legend",
-            font=FONTS["subheading"],
-            text_color=COLORS["accent"],
-            anchor="w",
-        ).pack(side="left")
-
-        items_frame = customtkinter.CTkFrame(self._legend_frame, fg_color="transparent")
-        items_frame.pack(fill="x", expand=True, padx=PAD_SM, pady=(0, PAD_SM // 2))
-        items_frame.columnconfigure(0, weight=1)
-        items_frame.columnconfigure(1, weight=1)
-
-        # Central Fluid (spanning 2 columns, synchronized with DSI number font)
-        core_box = customtkinter.CTkFrame(items_frame, fg_color=COLORS["bg_tertiary"], corner_radius=6)
-        core_box.grid(row=0, column=0, columnspan=2, sticky="nsew", padx=3, pady=3)
-        customtkinter.CTkLabel(
-            core_box, text="●", font=FONTS["dsi_value"], text_color=CENTRAL_COLOR
-        ).pack(side="left", padx=(8, 4), pady=5)
-        self._legend_core_label = customtkinter.CTkLabel(
-            core_box,
-            text=f"Central Fluid (Q={Q:.2f})",
-            font=FONTS["dsi_value"],
-            text_color=COLORS["text_primary"],
-            anchor="w",
-        )
-        self._legend_core_label.pack(side="left", fill="x", expand=True, padx=(0, 8), pady=5)
-
-        # Side sectors (each spanning full width so large DSI font is never cramped)
-        for row_idx, sec in enumerate(sectors, start=1):
-            sec_box = customtkinter.CTkFrame(items_frame, fg_color=COLORS["bg_tertiary"], corner_radius=6)
-            sec_box.grid(row=row_idx, column=0, columnspan=2, sticky="nsew", padx=3, pady=2)
-            customtkinter.CTkLabel(
-                sec_box, text="●", font=FONTS["dsi_value"], text_color=sec.color
-            ).pack(side="left", padx=(8, 4), pady=4)
-            lbl = customtkinter.CTkLabel(
-                sec_box,
-                text=f"{sec.name}: [{sec.angle_start:.0f}°–{sec.angle_start + sec.angle_width:.0f}°]",
-                font=FONTS["dsi_value"],
-                text_color=COLORS["text_primary"],
-                anchor="w",
+        if hasattr(self, "_legend_peripheral_inlet_box") and self._legend_peripheral_inlet_box.winfo_exists():
+            self._legend_peripheral_inlet_box.pack(
+                side="left", padx=(0, 16), before=self._legend_down_blade_box
             )
-            lbl.pack(side="left", fill="x", expand=True, padx=(0, 8), pady=4)
-            self._legend_sector_labels.append(lbl)
+
+        for col in peripheral_colors:
+            dot = customtkinter.CTkLabel(
+                self._legend_peripheral_dots_frame,
+                text="●",
+                font=FONTS["body_bold"],
+                text_color=col,
+            )
+            dot.pack(side="left", padx=(0, 2))
 
     def _remove_sectors_legend(self):
-        """Safely destroy all widgets inside the legend container to prevent duplicate legends."""
-        if hasattr(self, "_fwd_legend_container") and self._fwd_legend_container is not None:
-            for w in self._fwd_legend_container.winfo_children():
-                try:
-                    w.destroy()
-                except Exception:
-                    pass
-        self._legend_frame = None
-        self._legend_sector_labels = []
-        self._legend_core_label = None
+        """Cleanup helper kept for backwards compatibility."""
+        self._update_under_plot_inlet_legend([])
 
     def _clear_fwd_image(self):
         self._stop_autorotation()
@@ -1080,7 +1301,7 @@ class ParametersView(customtkinter.CTkFrame):
         try:
             self._fwd_img_label_central.configure(image=None, text="Central View")
             self._fwd_img_label_side.configure(image=None, text="Side View")
-            self._fwd_colored_image_label.configure(image=None, text="Click 'Calculate' to render Visualization")
+            self._fwd_colored_image_label.configure(image=None, text="Click 'Simulate' to render Visualization")
         except Exception:
             pass
         self._photo_ref_central = None
@@ -1186,9 +1407,9 @@ class ParametersView(customtkinter.CTkFrame):
             width=80,
         ).grid(row=0, column=7, padx=(0, PAD_LG), pady=PAD_MD)
 
-        # Find button
+        # Optimize button
         customtkinter.CTkButton(
-            ctrl, text="Find Parameters", font=FONTS["subheading"],
+            ctrl, text="Optimize", font=FONTS["subheading"],
             fg_color=COLORS["accent"],
             hover_color=COLORS["accent_hover"],
             text_color=COLORS["text_on_accent"],

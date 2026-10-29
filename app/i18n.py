@@ -7,8 +7,8 @@ _CURRENT_LANG = "English"
 TRANSLATIONS = {
     "English": {
         "nav_viewer": "GLB Viewer",
-        "nav_params": "Morphogenerator\nParameters",
-        "nav_plots": "Plot Correlation",
+        "nav_params": "Simulate",
+        "nav_plots": "Graphs",
         "nav_settings": "Settings",
         "nav_guide": "Guide",
         "btn_help": "ⓘ Help",
@@ -19,11 +19,11 @@ TRANSLATIONS = {
         "guide_glb_title": "1. GLB Viewer",
         "guide_glb_text": "The GLB Viewer provides an interactive 3D environment to inspect your generated geometries. You can load a model, seamlessly rotate and zoom using your mouse, and apply precision clipping along the X, Y, or Z axes to analyze the internal cross-sections.",
         
-        "guide_params_title": "2. Select Parameters",
-        "guide_params_text": "The Parameters panel offers two powerful analysis modes:\n• Forward Mode: Input the number of petals (N) and the flow ratio (Q) to immediately predict performance metrics and view a streamline preview.\n• Inverse Mode: Specify a target metric and your desired value to automatically reverse-calculate the optimal N and Q design parameters.",
+        "guide_params_title": "2. Simulate",
+        "guide_params_text": "The Parameters panel offers two powerful analysis modes:\n• Simulate Mode: Input the blade pair count (N) and the flow ratio (Q) to immediately predict performance metrics and view a streamline preview.\n• Optimize Mode: Specify a target metric and your desired value to automatically find the optimal N and Q design parameters.",
         
-        "guide_plots_title": "3. Plot Correlation",
-        "guide_plots_text": "The Plot Correlation module generates rich 2D and 3D data visualizations, illustrating the non-linear relationship between your input parameters (N, Q) and the resulting morphological metrics. You can also import external data points for validation and export the figures in high resolution.",
+        "guide_plots_title": "3. Graphs",
+        "guide_plots_text": "The Graphs module generates rich 2D and 3D data visualizations, illustrating the non-linear relationship between your input parameters (N, Q) and the resulting morphological metrics. You can also import external data points for validation and export the figures in high resolution.",
         
         "guide_settings_title": "4. Settings & Preferences",
         "guide_settings_text": "The Settings panel lets you customize the application's appearance and behavior. You can switch between Light and Dark mode, change the interface language, and adjust the default plot export preferences (such as format and DPI) to match your workflow.",
@@ -31,10 +31,10 @@ TRANSLATIONS = {
         "modal_glb_title": "GLB Viewer Help",
         "modal_glb_text": "• Use the mouse to rotate the 3D model.\n• Clipping: Select an axis (X, Y, Z) and drag the slider to cut the model.\n• Keep: Choose which side of the cut to keep (Top/Bottom).",
         
-        "modal_params_title": "Select Parameters Help",
-        "modal_params_text": "• Forward Mode: Set N (number of petals) and Q (slider) to predict output metrics.\n• Inverse Mode: Enter a target value and tolerance to reverse-calculate the best N and Q.",
+        "modal_params_title": "Simulate Help",
+        "modal_params_text": "• Simulate Mode: Set N (blade pair count) and Q (slider) to predict output metrics.\n• Optimize Mode: Enter a target value and tolerance to find the best matching N and Q.",
         
-        "modal_plots_title": "Plot Correlation Help",
+        "modal_plots_title": "Graphs Help",
         "modal_plots_text": "• Select Plot Type: 2D Line, 2D Scatter, or 3D Surface.\n• Select the metric on the Y/Z axis.\n• You can filter the N values for 2D plots.\n• Use the Save icon below the plot to export.",
         
         "settings_appearance": "Appearance",
@@ -49,8 +49,8 @@ TRANSLATIONS = {
     },
     "Italian": {
         "nav_viewer": "Visualizzatore GLB",
-        "nav_params": "Morphogenerator\nParameters",
-        "nav_plots": "Grafici di Correlazione",
+        "nav_params": "Simulate",
+        "nav_plots": "Graphs",
         "nav_settings": "Impostazioni",
         "nav_guide": "Guida",
         "btn_help": "ⓘ Aiuto",
@@ -61,11 +61,11 @@ TRANSLATIONS = {
         "guide_glb_title": "1. Visualizzatore GLB",
         "guide_glb_text": "Il Visualizzatore GLB offre un ambiente 3D interattivo per ispezionare le geometrie generate. Puoi caricare un modello, ruotarlo fluidamente e utilizzare gli strumenti di clipping lungo gli assi X, Y o Z per analizzare nel dettaglio le sezioni interne.",
         
-        "guide_params_title": "2. Seleziona Parametri",
-        "guide_params_text": "Il pannello Parametri offre due potenti modalità di analisi:\n• Forward Mode (Modalità Diretta): Inserisci il numero di petali (N) e il rapporto di flusso (Q) per prevedere istantaneamente le metriche di performance e visualizzare un'anteprima.\n• Inverse Mode (Modalità Inversa): Specifica una metrica obiettivo e il valore desiderato per calcolare automaticamente a ritroso i parametri di design ottimali N e Q.",
+        "guide_params_title": "2. Simulate",
+        "guide_params_text": "Il pannello Simulate offre due potenti modalità di analisi:\n• Simulate Mode (Modalità Diretta): Inserisci il conteggio delle coppie di pale (N) e il rapporto di flusso (Q) per simulare istantaneamente le metriche di performance e visualizzare un'anteprima.\n• Optimize Mode (Modalità Ottimizzazione): Specifica una metrica obiettivo e il valore desiderato per trovare i parametri di design ottimali N e Q.",
         
-        "guide_plots_title": "3. Grafici di Correlazione",
-        "guide_plots_text": "Il modulo dei grafici genera visualizzazioni dati 2D e 3D avanzate, illustrando le relazioni non lineari tra i parametri di input (N, Q) e le metriche morfologiche risultanti. È inoltre possibile importare punti dati esterni per la convalida ed esportare i grafici in alta risoluzione.",
+        "guide_plots_title": "3. Graphs",
+        "guide_plots_text": "Il modulo Graphs genera visualizzazioni dati 2D e 3D avanzate, illustrando le relazioni non lineari tra i parametri di input (N, Q) e le metriche morfologiche risultanti. È inoltre possibile importare punti dati esterni per la convalida ed esportare i grafici in alta risoluzione.",
         
         "guide_settings_title": "4. Impostazioni e Preferenze",
         "guide_settings_text": "Il pannello delle Impostazioni ti permette di personalizzare l'aspetto e il comportamento dell'applicazione. Puoi passare dalla modalità Chiara a quella Scura, cambiare la lingua dell'interfaccia e regolare le preferenze di esportazione dei grafici (come formato e DPI) per adattarle al tuo flusso di lavoro.",
@@ -73,10 +73,10 @@ TRANSLATIONS = {
         "modal_glb_title": "Aiuto: Visualizzatore GLB",
         "modal_glb_text": "• Usa il mouse per ruotare il modello 3D.\n• Clipping: Seleziona un asse (X, Y, Z) e usa lo slider per tagliare il modello.\n• Keep: Scegli quale parte del taglio mantenere (Top/Bottom).",
         
-        "modal_params_title": "Aiuto: Seleziona Parametri",
-        "modal_params_text": "• Forward Mode: Imposta N (numero di petali) e Q per calcolare le metriche.\n• Inverse Mode: Inserisci un target e una tolleranza per calcolare a ritroso N e Q ottimali.",
+        "modal_params_title": "Aiuto: Simulate",
+        "modal_params_text": "• Simulate Mode: Imposta N (blade pair count) e Q per simulare le metriche.\n• Optimize Mode: Inserisci un target e una tolleranza per ottimizzare N e Q.",
         
-        "modal_plots_title": "Aiuto: Grafici",
+        "modal_plots_title": "Aiuto: Graphs",
         "modal_plots_text": "• Tipo di Grafico: Linea 2D, Scatter 2D o Superficie 3D.\n• Filtra i valori di N per i grafici 2D.\n• Usa l'icona di salvataggio per esportare il grafico.",
         
         "settings_appearance": "Aspetto",

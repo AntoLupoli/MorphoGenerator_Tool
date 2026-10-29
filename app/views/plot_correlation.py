@@ -139,10 +139,7 @@ class PlotCorrelationView(ctk.CTkFrame):
         add_control(export_card, "DPI", ctk.CTkOptionMenu, variable=self.dpi_var, values=["72", "150", "300", "600"])
 
         btn_save = ctk.CTkButton(export_card, text="Save Plot", fg_color="transparent", border_width=1, command=self._save_plot)
-        btn_save.pack(fill="x", padx=PAD_MD, pady=(PAD_MD, PAD_SM))
-        
-        btn_save_light = ctk.CTkButton(export_card, text="Save Plot (Light Mode)", fg_color=COLORS["bg_tertiary"], hover_color=COLORS["bg_hover"], text_color=COLORS["text_primary"], border_width=0, command=self._export_light_mode)
-        btn_save_light.pack(fill="x", padx=PAD_MD, pady=(0, PAD_MD))
+        btn_save.pack(fill="x", padx=PAD_MD, pady=(PAD_MD, PAD_MD))
 
     def _build_plot_area(self):
         self.right_panel = ctk.CTkFrame(self, fg_color="transparent")
@@ -291,9 +288,6 @@ class PlotCorrelationView(ctk.CTkFrame):
                 self.fig.savefig(filepath, format=fmt, dpi=dpi, bbox_inches="tight", facecolor='white')
             except Exception as e:
                 print(f"Error saving plot: {e}")
-
-    def _export_light_mode(self):
-        self._save_plot()
 
     def _toggle_data_points(self):
         if self.data_points is not None:

@@ -1,18 +1,18 @@
 """
-streamline_extractor.py
-========================
-Global module for extracting, interpolating, and synchronizing CFD streamline
+flow_sync.py
+=============
+Module for extracting, interpolating, and synchronizing CFD streamline
 IDs and coordinates between the top plane (Inlet) and the bottom plane (Outlet).
 
 Provides:
 - `DataProcessor`: Complete class with unit detection, radial bounding, and .npz disk/memory caching.
-- `get_synced_streamlines()`: High-level standalone convenience function.
+- `get_synced_streamlines()`: High-level convenience function.
 """
 
 from __future__ import annotations
 
 import os
-import json
+import sys
 import hashlib
 from pathlib import Path
 from typing import Optional, Tuple, Union
@@ -20,21 +20,12 @@ from typing import Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 
-# Global cache directory located in txt_to_image/.cache/synced
-PROJECT_ROOT = Path(__file__).resolve().parent
+# Global cache directory
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    PROJECT_ROOT = Path(sys._MEIPASS)
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-def _find_hash_index_file() -> Path:
-    candidates = [
-        PROJECT_ROOT / ".cache" / "file_hash_index.json",
-        PROJECT_ROOT / "txt_to_image" / ".cache" / "file_hash_index.json",
-        PROJECT_ROOT.parent / "txt_to_image" / ".cache" / "file_hash_index.json",
-    ]
-    for c in candidates:
-        if c.exists():
-            return c
-    return PROJECT_ROOT / ".cache" / "file_hash_index.json"
-
-HASH_INDEX_FILE = _find_hash_index_file()
 
 def _find_cache_dir() -> Path:
     candidates = [
@@ -50,83 +41,40 @@ def _find_cache_dir() -> Path:
             return c
     return PROJECT_ROOT / ".cache" / "synced"
 
+
 CACHE_DIR = _find_cache_dir()
 _MEMORY_CACHE = {}
 
-
-def _get_hash_index() -> dict:
-    """Load the persistent file hash index to avoid re-hashing multi-gigabyte files."""
-    hash_file = _find_hash_index_file()
-    if hash_file.exists():
-        try:
-            with open(hash_file, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-
-def _save_hash_index(index: dict) -> None:
-    """Save the persistent file hash index."""
-    hash_file = _find_hash_index_file()
-    try:
-        hash_file.parent.mkdir(parents=True, exist_ok=True)
-        with open(hash_file, "w", encoding="utf-8") as f:
-            json.dump(index, f, indent=2)
-    except Exception:
-        pass
+# Precomputed 8-char SHA-256 digests for known CFD simulation files (N=2..6)
+KNOWN_FILE_HASHES: dict[str, str] = {
+    "M2_N2.txt": "98af33b6",
+    "M2_N3.txt": "67171fd1",
+    "M2_N4.txt": "fd24c3e3",
+    "M2_N5.txt": "400b15b1",
+    "M2_N6.txt": "fe31f700",
+    "M2_N6_er10.txt": "e440e5e5",
+}
 
 
 def _hash_file(path: Union[str, Path]) -> str:
     """Return an 8-character SHA-256 hex digest of file contents for cache keying.
-    Uses file_hash_index.json to avoid re-reading multi-gigabyte files when size and mtime match.
-    Also looks up by filename for isolated environments.
+    Uses precomputed hashes for known CFD simulation files to avoid hashing multi-gigabyte files.
     """
     path_obj = Path(path).resolve()
-    path_str = str(path_obj)
     fname = path_obj.name
 
-    # Check persistent index
-    index = _get_hash_index()
-
-    # Check exact path match
-    if path_str in index:
-        entry = index[path_str]
-        if not path_obj.exists():
-            return entry["hash"]
-        file_size = path_obj.stat().st_size
-        file_mtime = path_obj.stat().st_mtime
-        if entry.get("size") == file_size and abs(entry.get("mtime", 0) - file_mtime) < 1e-4:
-            return entry["hash"]
-
-    # Check filename match (handles moved folders or isolated environments)
-    for k, entry in index.items():
-        if Path(k).name == fname:
-            if not path_obj.exists():
-                return entry["hash"]
-            file_size = path_obj.stat().st_size
-            file_mtime = path_obj.stat().st_mtime
-            if entry.get("size") == file_size and abs(entry.get("mtime", 0) - file_mtime) < 1e-4:
-                return entry["hash"]
+    if fname in KNOWN_FILE_HASHES:
+        return KNOWN_FILE_HASHES[fname]
 
     if not path_obj.exists():
         h = hashlib.sha256(fname.encode("utf-8"))
         return h.hexdigest()[:8]
 
-    file_size = path_obj.stat().st_size
-    file_mtime = path_obj.stat().st_mtime
-
-    # Compute sha256
     h = hashlib.sha256()
     with open(path_obj, "rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
-    digest = h.hexdigest()[:8]
-
-    # Save to index
-    index[path_str] = {"size": file_size, "mtime": file_mtime, "hash": digest}
-    _save_hash_index(index)
-    return digest
+    return h.hexdigest()[:8]
 
 
 def _find_cache_file(source_file: Union[str, Path]) -> Optional[Path]:
@@ -304,9 +252,9 @@ class DataProcessor:
         self.inlet_data = df_sync_inlet.copy()
         self.bottom_data = df_sync_bottom.copy()
 
-        # Save synchronized coordinates to disk cache in txt_to_image/.cache/synced
+        # Save synchronized coordinates to disk cache in .cache/synced
         if self.use_disk_cache:
-            save_dir = PROJECT_ROOT / "txt_to_image" / ".cache" / "synced"
+            save_dir = PROJECT_ROOT / ".cache" / "synced"
             save_dir.mkdir(parents=True, exist_ok=True)
             cache_path = save_dir / f"{_hash_file(self.filepath)}.npz"
             np.savez(
@@ -342,22 +290,10 @@ def get_synced_streamlines(
     r_bottom_max: float = 1.0,
     edge_point_bottom: Optional[Tuple[float, float]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Convenience function to retrieve synchronized coordinates and streamline IDs.
-
-    Example:
-    >>> from streamline_extractor import get_synced_streamlines
-    >>> in_coords, bot_coords, ids = get_synced_streamlines("path/to/streamline.txt")
-    >>> print(f"Found {len(ids)} synchronized streamlines.")
-    """
+    """Convenience function to retrieve synchronized coordinates and streamline IDs."""
     processor = DataProcessor(filepath, z_bottom_target=z_bottom, z_inlet_target=z_inlet)
     return processor.get_synced_coords(
         r_inlet_max=r_inlet_max,
         r_bottom_max=r_bottom_max,
         edge_point_bottom=edge_point_bottom,
     )
-
-
-if __name__ == "__main__":
-    print("Module 'streamline_extractor' is ready for use.")
-
-

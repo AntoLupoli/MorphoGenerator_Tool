@@ -1,5 +1,5 @@
 """
-morpho_visualizer.py
+sector_renderer.py
 ====================
 Global visualization tool for the morphogenerator microfluidic system.
 
@@ -31,9 +31,16 @@ from matplotlib.patches import Arc, Circle, Wedge
 import numpy as np
 import pandas as pd
 
-from streamline_extractor import DataProcessor, get_synced_streamlines
+try:
+    from app.core.flow_sync import DataProcessor, get_synced_streamlines, _find_cache_file
+except ImportError:
+    from flow_sync import DataProcessor, get_synced_streamlines, _find_cache_file
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+import sys
+if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+    PROJECT_ROOT = Path(sys._MEIPASS)
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Color palette for side sectors (distinct, high contrast, vibrant)
 SIDE_PALETTE = [
@@ -83,7 +90,7 @@ class SideSector:
         self.angle_width = angle_width
         self.angle_end = (angle_start + angle_width) % 360.0
         self.color = color
-        self.name = f"Side {index + 1}"
+        self.name = f"Peripheral {index + 1}"
 
     def contains(self, angle_deg: np.ndarray) -> np.ndarray:
         """Check if angles (in degrees, 0 to 360) fall inside this sector."""
@@ -593,7 +600,7 @@ class MorphoVisualizer:
 
         ax_outlet.set_title(
             f"Nozzle Plane\n"
-            f"Swirl Morphogenesis & Side Streamlines Trace",
+            f"Swirl Morphogenesis & Peripheral Streamlines Trace",
             fontsize=10,
             fontweight="bold",
         )
@@ -608,7 +615,7 @@ class MorphoVisualizer:
 
         fig.suptitle(
             f"Morphogenerator Streamline Visualization  |  {Path(self.filepath).name}\n"
-            f"Synced Streamlines: {self.n_points:,}  |  Sides: {len(sectors)}  |  Rotation: {rotation_deg:.1f}°",
+            f"Synced Streamlines: {self.n_points:,}  |  Peripherals: {len(sectors)}  |  Rotation: {rotation_deg:.1f}°",
             fontsize=11,
             fontweight="bold",
             y=0.99,
@@ -1040,8 +1047,8 @@ def resolve_streamline_file(n: int, base_dir: Optional[Union[str, Path]] = None)
     ])
     candidates = [
         f"M2_N{n}_er10.txt",
-        f"M2_N{n}.txt",
         f"M2_N{n}_er8.txt",
+        f"M2_N{n}.txt",
         f"M2_N{n}_er15.txt",
     ]
     for d in search_dirs:
@@ -1057,7 +1064,10 @@ def resolve_streamline_file(n: int, base_dir: Optional[Union[str, Path]] = None)
                 return m
 
     # Fallback for isolated environments with precomputed .cache:
-    from streamline_extractor import _find_cache_file
+    try:
+        from app.core.flow_sync import _find_cache_file
+    except ImportError:
+        from flow_sync import _find_cache_file
     for name in candidates:
         virtual_cand = PROJECT_ROOT / ".cache" / name
         cache = _find_cache_file(virtual_cand)
@@ -1140,7 +1150,7 @@ def main():
         "-b",
         type=int,
         default=None,
-        help="Number of blades for inlet plane partition (default: auto-detected from filename or 4).",
+        help="Blade pair count for inlet plane partition (default: auto-detected from filename or 4).",
     )
     parser.add_argument(
         "--no-blades",
@@ -1191,3 +1201,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# Architectural aliases
+SectorRenderer = MorphoVisualizer
+get_sector_renderer_for_n = get_visualizer_for_n

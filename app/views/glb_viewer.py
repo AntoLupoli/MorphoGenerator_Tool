@@ -726,7 +726,7 @@ class GLBViewerView(ctk.CTkFrame):
         head = ctk.CTkFrame(frame, fg_color="transparent")
         head.pack(fill="x", padx=PAD_MD, pady=(PAD_MD, 0))
         ctk.CTkLabel(
-            head, text="Select Number of Blades",
+            head, text="Select Blade Pair Count",
             font=FONTS["heading"], text_color=COLORS["text_primary"],
         ).pack(side="left")
         ctk.CTkButton(

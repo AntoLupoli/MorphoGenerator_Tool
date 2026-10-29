@@ -6,7 +6,6 @@ import json
 import os
 from pathlib import Path
 import customtkinter as ctk
-from tkinter import filedialog
 from app.theme import COLORS, FONTS, PAD_SM, PAD_MD, PAD_LG, PAD_XL, CORNER_RADIUS
 from app.core import image_loader
 
@@ -19,7 +18,6 @@ DEFAULT_SETTINGS = {
         "font_scale": "1.0",
         "language": "English"
     },
-    "data_path": str(image_loader.get_data_root()),
     "plot": {
         "font_family": "Segoe UI",
         "font_size": 12,
@@ -68,7 +66,6 @@ class SettingsView(ctk.CTkFrame):
         self.scroll.grid_columnconfigure(0, weight=1)
 
         self._build_appearance_section()
-        self._build_data_section()
         self._build_plot_section()
         self._build_about_section()
 
@@ -157,52 +154,9 @@ class SettingsView(ctk.CTkFrame):
         self.settings["appearance"]["font_scale"] = scale_val
         self._save_all()
 
-    def _build_data_section(self):
-        card = self._create_section_card("Data Configuration")
-        card.grid(row=1, column=0, sticky="ew", pady=(0, PAD_MD))
-
-        lbl_path = ctk.CTkLabel(card, text="Data Directory", font=FONTS["body"])
-        lbl_path.grid(row=2, column=0, sticky="w", padx=PAD_MD, pady=PAD_SM)
-
-        path_frame = ctk.CTkFrame(card, fg_color="transparent")
-        path_frame.grid(row=2, column=1, sticky="e", padx=PAD_MD, pady=PAD_SM)
-        path_frame.grid_columnconfigure(0, weight=1)
-
-        self.path_var = ctk.StringVar(value=self.settings["data_path"])
-        entry = ctk.CTkEntry(path_frame, textvariable=self.path_var, width=300)
-        entry.grid(row=0, column=0, padx=(0, PAD_SM))
-        
-        btn_browse = ctk.CTkButton(path_frame, text="Browse", width=80, command=self._browse_path)
-        btn_browse.grid(row=0, column=1)
-
-        self.lbl_status = ctk.CTkLabel(card, text="● Status unknown", font=FONTS["caption"])
-        self.lbl_status.grid(row=3, column=1, sticky="e", padx=PAD_MD, pady=(0, PAD_SM))
-        self._update_path_status()
-
-    def _browse_path(self):
-        folder = filedialog.askdirectory(initialdir=self.path_var.get())
-        if folder:
-            self.path_var.set(folder)
-            self.settings["data_path"] = folder
-            image_loader.set_data_root(folder)
-            self._update_path_status()
-            self._save_all()
-
-    def _update_path_status(self):
-        path = Path(self.path_var.get())
-        if path.exists() and path.is_dir():
-            # Check if any streamline folders exist
-            has_data = any(path.glob(".prev/M2_N*_streamline"))
-            if has_data:
-                self.lbl_status.configure(text="● Valid data directory found", text_color=COLORS["success"])
-            else:
-                self.lbl_status.configure(text="● Directory exists but no streamline data found", text_color=COLORS["warning"])
-        else:
-            self.lbl_status.configure(text="● Directory does not exist", text_color=COLORS["error"])
-
     def _build_plot_section(self):
         card = self._create_section_card("Default Plot Settings")
-        card.grid(row=2, column=0, sticky="ew", pady=(0, PAD_MD))
+        card.grid(row=1, column=0, sticky="ew", pady=(0, PAD_MD))
 
         def add_row(row, label_text, var_name, options, is_entry=False):
             lbl = ctk.CTkLabel(card, text=label_text, font=FONTS["body"])
@@ -232,7 +186,7 @@ class SettingsView(ctk.CTkFrame):
 
     def _build_about_section(self):
         card = self._create_section_card("About")
-        card.grid(row=3, column=0, sticky="ew", pady=(0, PAD_MD))
+        card.grid(row=2, column=0, sticky="ew", pady=(0, PAD_MD))
 
         info_frame = ctk.CTkFrame(card, fg_color="transparent")
         info_frame.grid(row=2, column=0, columnspan=2, padx=PAD_MD, pady=PAD_MD, sticky="ew")

@@ -28,8 +28,9 @@ pyinstaller ^
     --hidden-import PIL.ImageTk ^
     --hidden-import PIL.ImageDraw ^
     --hidden-import PIL.ImageFont ^
-    --hidden-import morpho_visualizer ^
-    --hidden-import streamline_extractor ^
+    --hidden-import app.core.flow_sync ^
+    --hidden-import app.core.sector_renderer ^
+    --hidden-import app.core.coaxial_renderer ^
     --hidden-import pandas ^
     --hidden-import trimesh ^
     --hidden-import matplotlib ^

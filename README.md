@@ -31,7 +31,6 @@
 
 ### Prerequisites
 - Python **3.10+**
-- 
 ### 1. Clone or Download
 ```bash
 cd Morpho_tool
@@ -73,7 +72,10 @@ Morpho_tool/
 |   |   |-- correlations.py    # Polynomial correlation coefficients
 |   |   |-- solver.py          # Forward/Inverse/Sweep engines
 |   |   |-- statistics.py      # Statistical evaluation metrics
-|   |   +-- image_loader.py    # Streamline simulation image loader
+|   |   |-- image_loader.py    # Streamline simulation image loader
+|   |   |-- flow_sync.py       # Data synchronization & caching
+|   |   |-- sector_renderer.py # 2D sector dual-plane rendering engine
+|   |   +-- coaxial_renderer.py# Coaxial layer dual-plane rendering engine
 |   |-- views/                 # UI View modules (CustomTkinter)
 |   |   |-- glb_viewer.py      # 3D GLB model interactive viewer
 |   |   |-- parameters.py      # Forward & Inverse parameter solver view
@@ -83,8 +85,6 @@ Morpho_tool/
 |   |-- app.py                 # Main window, sidebar navigation & layout
 |   |-- theme.py               # Color palettes, typography & dynamic icons
 |   +-- i18n.py                # Multi-language localization dictionary
-|-- morpho_visualizer.py       # Matplotlib streamline & dual-plane rendering engine
-|-- streamline_extractor.py    # CFD streamline data synchronization & caching
 |-- main.py                    # Application launch entry point
 |-- build.bat                  # PyInstaller one-click build script
 |-- app.ico                    # Multi-resolution application icon
